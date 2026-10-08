@@ -374,7 +374,8 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
   <button class="tb-btn tb-btn-ghost" onclick="loadSample()">Load sample</button>
   <button id="undo-btn" class="tb-btn tb-btn-ghost" onclick="undo()" style="opacity:0.35;font-size:13px;padding:4px 10px" title="Nothing to undo">↩ Undo</button>
   <button id="redo-btn" class="tb-btn tb-btn-ghost" onclick="redo()" style="opacity:0.35;font-size:13px;padding:4px 10px" title="Nothing to redo">↪ Redo</button>
-  <button class="tb-btn tb-btn-ghost" onclick="exportJSON()">Export JSON</button>
+  <button id="save-json-btn" class="tb-btn tb-btn-ghost" onclick="saveJSON()" title="Save back into the JSON file you opened or last exported (Ctrl+S). Use Export JSON to create a new file.">Save JSON</button>
+  <button class="tb-btn tb-btn-ghost" onclick="exportJSON()" title="Save as a new JSON file">Export JSON</button>
   <button class="tb-btn tb-btn-ghost" onclick="exportCSV()" style="border-color:#10b981;color:#10b981">Export CSV</button>
   <button class="tb-btn tb-btn-ghost" onclick="importJSON()">Import JSON</button>
   <button class="tb-btn tb-btn-ghost" onclick="openPDFModal()" style="border-color:#f59e0b;color:#f59e0b">⬇ PDF</button>
@@ -3486,6 +3487,13 @@ function syncScrollSetup(){
     gh.scrollLeft=gb.scrollLeft;
     syncing=false;
   };
+  // And the other way: scrolling sideways over the date rows moves the
+  // whole chart, not just the header strip.
+  gh.onscroll=()=>{
+    if(syncing)return;syncing=true;
+    gb.scrollLeft=gh.scrollLeft;
+    syncing=false;
+  };
 }
 
 // ═══════════════════════════════════════════════════════
@@ -3800,6 +3808,7 @@ async function exportJSON(){
       const writable=await handle.createWritable();
       await writable.write(blob);
       await writable.close();
+      linkJSONFile(handle);   // Save JSON now writes straight back to this file
       // Show brief confirmation in status bar
       const sb=document.getElementById('sb-tasks');
       if(sb){const prev=sb.textContent;sb.textContent='✓ Saved';setTimeout(()=>sb.textContent=prev,2000);}
@@ -3814,29 +3823,94 @@ async function exportJSON(){
     a.click();
   }
 }
-function importJSON(){
+// Import: with the File System Access API (Chrome / Edge) the file is opened
+// through a picker that keeps a handle, so Save JSON can write straight back
+// to it. Elsewhere it falls back to a plain file input.
+async function importJSON(){
+  if(window.showOpenFilePicker){
+    try{
+      const [handle]=await window.showOpenFilePicker({types:[{description:'Gantt project file',accept:{'application/json':['.json']}}],multiple:false});
+      const file=await handle.getFile();
+      if(loadJSONText(await file.text())) linkJSONFile(handle);
+    }catch(e){ if(e.name!=='AbortError') alert('Could not open file: '+e.message); }
+    return;
+  }
   const inp=document.createElement('input');inp.type='file';inp.accept='.json';
   inp.onchange=e=>{
     const f=e.target.files[0];if(!f)return;
     const r=new FileReader();
-    r.onload=ev=>{
-      try{
-        const d=JSON.parse(ev.target.result);
-        tasks=d.tasks||[]; nextId=Math.max(...tasks.map(t=>t.id||0),0)+1; undoStack.length=0; redoStack.length=0; lastState=null;
-        if(d.pxPerDay){pxPerDay=d.pxPerDay;document.getElementById('zoom-val').value=pxPerDay;}
-        if(d.projectStart){projectStartStr=d.projectStart;document.getElementById('project-start-display').value=fmtDisplay(d.projectStart);}
-        if(d.barColors) applyBarColors(d.barColors);
-        durationMode = d.durationMode==='weeks' ? 'weeks' : 'days'; // default to 'days' if absent (old files)
-        workdayOverrides = d.workdayOverrides ? {...d.workdayOverrides} : {};  // old files have none
-        showNonWorkBands = !!d.showNonWorkBands;
-        const nwBtn=document.getElementById('nonwork-btn');
-        if(nwBtn) nwBtn.classList.toggle('active',showNonWorkBands);
-        const dh=document.getElementById('days-header');
-        if(dh) dh.textContent = durationMode==='weeks' ? 'Wks' : 'Days';
-        refresh();
-      }catch(err){alert('Could not read JSON: '+err.message);}
-    };r.readAsText(f);
+    r.onload=ev=>{ if(loadJSONText(ev.target.result)) linkJSONFile(null, f.name); };
+    r.readAsText(f);
   };inp.click();
+}
+function loadJSONText(text){
+  try{
+    const d=JSON.parse(text);
+    tasks=d.tasks||[]; nextId=Math.max(...tasks.map(t=>t.id||0),0)+1; undoStack.length=0; redoStack.length=0; lastState=null;
+    if(d.pxPerDay){pxPerDay=d.pxPerDay;document.getElementById('zoom-val').value=pxPerDay;}
+    if(d.projectStart){projectStartStr=d.projectStart;document.getElementById('project-start-display').value=fmtDisplay(d.projectStart);}
+    if(d.barColors) applyBarColors(d.barColors);
+    durationMode = d.durationMode==='weeks' ? 'weeks' : 'days'; // default to 'days' if absent (old files)
+    workdayOverrides = d.workdayOverrides ? {...d.workdayOverrides} : {};  // old files have none
+    showNonWorkBands = !!d.showNonWorkBands;
+    const nwBtn=document.getElementById('nonwork-btn');
+    if(nwBtn) nwBtn.classList.toggle('active',showNonWorkBands);
+    const dh=document.getElementById('days-header');
+    if(dh) dh.textContent = durationMode==='weeks' ? 'Wks' : 'Days';
+    refresh();
+    return true;
+  }catch(err){alert('Could not read JSON: '+err.message); return false;}
+}
+
+// ═══════════════════════════════════════════════════════
+//  SAVE JSON (write back to the linked file)
+//  The same JSON as Export JSON, written into the file that was opened or
+//  last exported, without asking where. Before writing it re-reads that file:
+//  the Forecast tool saves fees and invoices into the same file (a
+//  `forecast` property on each heading), so if the file has NEWER forecast
+//  figures than this window loaded, those are kept rather than overwritten.
+// ═══════════════════════════════════════════════════════
+let jsonFileHandle=null, jsonFileName='';
+function linkJSONFile(handle, name){
+  jsonFileHandle=handle||null;
+  jsonFileName=handle ? handle.name : (name||'');
+  const b=document.getElementById('save-json-btn');
+  if(b) b.title = jsonFileHandle
+    ? `Save back into ${jsonFileName} (Ctrl+S). Use Export JSON to create a new file.`
+    : 'Save JSON: choose where to save (the file will then stay linked). Use Export JSON to create a new file.';
+}
+function keepNewerForecast(fileDoc){
+  let kept=0;
+  (fileDoc && Array.isArray(fileDoc.tasks) ? fileDoc.tasks : []).forEach(ft=>{
+    if(!ft || ft.type!=='heading' || !ft.forecast) return;
+    const mt=tasks.find(t=>isHeading(t) && t.id===ft.id);
+    if(!mt) return;
+    const mine=(mt.forecast&&mt.forecast.savedAt)||'', theirs=ft.forecast.savedAt||'';
+    if(!mt.forecast || theirs>mine){ mt.forecast=JSON.parse(JSON.stringify(ft.forecast)); kept++; }
+  });
+  if(kept) lastState=stateSignature();   // not an undo step: it is the file's own data
+  return kept;
+}
+async function saveJSON(){
+  if(!jsonFileHandle) return exportJSON();
+  const sb=document.getElementById('sb-tasks');
+  const flash=msg=>{ if(sb){const prev=sb.textContent;sb.textContent=msg;setTimeout(()=>sb.textContent=prev,2500);} };
+  try{
+    let perm='granted';
+    if(jsonFileHandle.queryPermission) perm=await jsonFileHandle.queryPermission({mode:'readwrite'});
+    if(perm!=='granted' && jsonFileHandle.requestPermission) perm=await jsonFileHandle.requestPermission({mode:'readwrite'});
+    if(perm!=='granted') return exportJSON();
+    let kept=0;
+    try{ kept=keepNewerForecast(JSON.parse(await (await jsonFileHandle.getFile()).text())); }catch(e){}
+    const data={tasks,pxPerDay,projectStart:projectStartStr,barColors:getBarColors(),durationMode,workdayOverrides,showNonWorkBands};
+    const w=await jsonFileHandle.createWritable();
+    await w.write(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));
+    await w.close();
+    flash(`✓ Saved to ${jsonFileName}`+(kept?` (kept newer forecast figures for ${kept} heading${kept!==1?'s':''})`:''));
+  }catch(e){
+    if(e.name==='AbortError') return;
+    alert('Could not save: '+e.message);
+  }
 }
 
 // ═══════════════════════════════════════════════════════
@@ -3911,6 +3985,7 @@ document.addEventListener('keydown',e=>{
   if((e.ctrlKey||e.metaKey)&&e.key==='Enter'){e.preventDefault();addRow();}
   if((e.ctrlKey||e.metaKey)&&e.key==='z'&&!e.shiftKey){e.preventDefault();undo();}
   if((e.ctrlKey||e.metaKey)&&(e.key==='y'||(e.key==='z'&&e.shiftKey))){e.preventDefault();redo();}
+  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s'){e.preventDefault();saveJSON();}
   if(e.key==='Escape'){closeCal();closeCtx();}
 });
 

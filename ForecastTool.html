@@ -1,0 +1,3536 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fee Forecast</title>
+<style>
+/* ═══ FORECAST TOOL ═══════════════════════════════════════════════
+   Companion to GanttTool.html. Same tokens, same grid rhythm (29px
+   rows, 49px date header), same chart conventions. The programme is
+   read from a Gantt JSON export; only the headings come across. A fee
+   is entered against each heading and spread across its working days,
+   then summed per week or per calendar month. */
+:root {
+  --comments-w:2px;  /* collapsed by default; widen via the main divider */
+  --name-w:360px;
+  --title-w:132px; /* row titles: Budget, Remaining invoiced, Actual invoiced */
+  --fee-w:150px;   /* total fee; budget shows to date over remaining */
+  --bg:#f7f7f5; --surface:#fff; --border:#e0ddd8; --border-strong:#c8c4bc;
+  --text:#1a1a18; --text-muted:#6b6860; --text-faint:#9e9c97;
+  --accent:#2563c4; --accent-light:#dbeafe;
+  --bar:#354629; --bar-crit:#ef4444;
+  --row-alt:#fafaf8; --row-hover:rgba(0,0,0,.017);
+  --row-line:rgba(0,0,0,.075);
+  --nonwork-band:rgba(0,0,0,.025);
+  --header-bg:#1e293b; --header-text:#f1f5f9;
+  --totals-bg:#e8e6df;
+  --font:'Inter',system-ui,-apple-system,sans-serif;
+  --font-mono:'JetBrains Mono','Fira Code',monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13px;line-height:1.4;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+
+/* TOP BAR */
+#topbar{background:var(--header-bg);color:var(--header-text);padding:0 16px;height:48px;display:flex;align-items:center;gap:12px;flex-shrink:0;border-bottom:1px solid #334155}
+#topbar h1{font-size:15px;font-weight:600;letter-spacing:-.01em;color:#f1f5f9;margin-right:4px}
+.tb-sep{width:1px;height:24px;background:#334155;flex-shrink:0}
+.tb-label{font-size:11px;color:#94a3b8;margin-right:3px;white-space:nowrap}
+.tb-input{background:#0f172a;border:1px solid #334155;color:#f1f5f9;padding:4px 8px;border-radius:4px;font-size:12px;font-family:var(--font)}
+.tb-btn{padding:5px 11px;border-radius:4px;border:none;cursor:pointer;font-size:12px;font-family:var(--font);font-weight:500;transition:opacity .15s;white-space:nowrap}
+.tb-btn:hover{opacity:.85}
+.tb-btn-primary{background:#3b82f6;color:#fff}
+.tb-btn-ghost{background:#1e293b;color:#94a3b8;border:1px solid #334155}
+#zoom-val{font-family:var(--font-mono);font-size:11px;color:#64748b;min-width:28px;text-align:center}
+#nonwork-btn.active{background:#e8e6e0;border-color:#9e9c97;color:#4a4842;font-weight:600}
+#save-btn.dirty{border-color:#f59e0b;color:#fbbf24}
+#save-btn.dirty::after{content:' •'}
+
+/* Weekly / Billing period segmented toggle. Same active treatment as the
+   Working days button so the right-hand cluster reads as one set. */
+.seg-toggle{display:flex;border:1px solid #334155;border-radius:4px;overflow:hidden;flex-shrink:0}
+.seg-toggle button{background:#1e293b;color:#94a3b8;border:none;padding:5px 11px;font-size:12px;font-family:var(--font);font-weight:500;cursor:pointer;white-space:nowrap;position:relative}
+.seg-toggle button+button{border-left:1px solid #334155}
+.seg-toggle button:hover{opacity:.85}
+.seg-toggle button.active{background:#e8e6e0;color:#4a4842;font-weight:600}
+/* Weekly chosen, but the figures do not fit at this zoom */
+.seg-toggle button.forced{color:#64748b;text-decoration:line-through;text-decoration-color:#64748b}
+.auto-tag{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-left:5px;padding:0 4px;border-radius:2px;background:#4a4842;color:#e8e6e0;vertical-align:1px}
+
+/* MAIN */
+#main{flex:1;display:flex;overflow:hidden}
+
+/* LEFT PANEL */
+#left-panel{width:734px;min-width:340px;max-width:1700px;flex-shrink:0;display:flex;flex-direction:column;background:var(--surface);border-right:2px solid var(--border-strong);overflow:hidden}
+/* Header = column labels (48px, matching month + week + day rows) plus
+   three totals strips (Budget 30px with two figures stacked, then Remaining
+   invoiced and Actual invoiced at 20px, matching the chart's three totals
+   rows) plus a 1px bottom border. 119px in all, the same as #gantt-header. */
+#left-header{background:#f0efe9;border-bottom:1px solid var(--border-strong);flex-shrink:0;position:relative}
+#left-header-cols{display:grid;grid-template-columns:28px 24px 32px var(--name-w) var(--title-w) var(--fee-w) var(--comments-w);height:48px;font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em}
+.lh-cell{display:flex;align-items:flex-end;padding:0 6px 5px;border-right:1px solid var(--border);white-space:nowrap;overflow:hidden}
+.lh-cell:last-child{border-right:none}
+.left-totals{display:grid;grid-template-columns:28px 24px 32px var(--name-w) var(--title-w) var(--fee-w) var(--comments-w);height:20px;border-top:1px solid var(--border-strong);background:var(--totals-bg)}
+.lt-cell{display:flex;align-items:center;padding:0 6px;border-right:1px solid var(--border);white-space:nowrap;overflow:hidden;font-size:11px;min-width:0}
+.lt-cell:last-child{border-right:none}
+.lt-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text)}
+.lt-mode{font-weight:500;color:var(--text-muted);text-transform:none;letter-spacing:0;margin-left:6px}
+.lt-total{font-family:var(--font-mono);font-weight:700;color:var(--text);justify-content:flex-end}
+.lt-warn{color:#b45309;font-size:10px}
+.lt-right{margin-left:auto;font-family:var(--font-mono);font-size:10px;color:var(--text-muted);padding-left:8px}
+.lt-split{padding:0 2px!important}
+.left-totals.tall{height:30px}
+.lt-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text)}
+/* Fee column header: TOTAL FEE over the to date | remaining sub-labels */
+.lh-fee{flex-direction:column;align-items:stretch;justify-content:flex-end}
+.lh-fee .lh-fee-main{text-align:right;padding-right:5px}
+.lh-split{display:flex;font-size:8.5px;font-weight:600;color:var(--text-faint);margin-top:2px}
+.lh-split span{flex:1;text-align:right;padding-right:5px}
+.col-resize-grip{position:absolute;top:0;width:5px;cursor:col-resize;z-index:20;background:transparent;transition:background .12s}
+.col-resize-grip:hover{background:var(--accent)}
+#left-body{flex:1;overflow-y:auto;overflow-x:hidden;padding-bottom:6px}
+
+.task-cell{display:flex;align-items:center;padding:0 5px;border-right:1px solid var(--border);min-width:0}
+.task-cell:last-child{border-right:none}
+.row-handle{justify-content:center;cursor:grab;color:var(--text-faint);font-size:11px;flex-shrink:0}
+.row-handle:active{cursor:grabbing}
+
+/* HEADING ROWS. Every row in this tool is a heading. */
+.heading-row{display:grid;grid-template-columns:28px 24px 32px var(--name-w) var(--title-w) var(--fee-w) var(--comments-w);border-bottom:1px solid rgba(0,0,0,.1);height:29px;position:relative;transition:background .08s;cursor:default}
+.heading-row.row-dragging{opacity:.45}
+.heading-row.row-drop-above{border-top:2px solid var(--accent)!important}
+.heading-row.row-drop-below{border-bottom:2px solid var(--accent)!important}
+
+/* SUB-ROWS (Budget, Invoiced). Formatted like a Gantt subtask: white row,
+   hairline separator, 3px stripe in the heading colour, indented name. */
+.task-row{display:grid;grid-template-columns:28px 24px 32px var(--name-w) var(--title-w) var(--fee-w) var(--comments-w);height:29px;position:relative;border-bottom:1px solid var(--row-line);background:var(--surface)}
+.task-row.row-drop-below{border-bottom:2px solid var(--accent)!important}
+.task-row.row-dragging,.task-row.row-dragging-block{opacity:.45}
+.heading-stripe{position:absolute;left:0;top:0;bottom:0;width:3px;pointer-events:none;z-index:1}
+.sub-name{font-family:var(--font);font-size:13px;color:var(--text);padding-left:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:8px;width:100%}
+.sub-badge{font-size:10px;color:var(--text-muted);font-family:var(--font-mono)}
+.sub-badge.warn{color:#b45309}
+.sub-badge.muted{color:var(--text-faint);font-style:italic}
+/* Two figures in the fee column: to date | remaining */
+.split{display:flex;flex-direction:column;justify-content:center;width:100%;height:100%;gap:1px}
+.split .fig{display:flex;justify-content:space-between;align-items:baseline;padding-right:5px;font-family:var(--font-mono);font-size:11px;line-height:13px;white-space:nowrap;overflow:hidden}
+.split .fig i{font-style:normal;font-family:var(--font);font-size:9px;color:var(--text-faint);padding-left:3px}
+.split .fig-a{font-weight:600;color:var(--text)}
+.split .fig-b{color:var(--text-muted)}
+.one-fig{width:100%;text-align:right;padding-right:5px;font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden}
+.neg{color:#dc2626!important}
+/* Budget row is taller to fit its two figures */
+.task-row.tall{height:37px}
+.gantt-row.tall{height:37px}
+.gantt-row.tall .gantt-bar,.gantt-row.tall .fee-label{top:11px}
+.sub-title{font-family:var(--font);font-size:12px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:6px;width:100%}
+.sub-info{font-family:var(--font-mono);font-size:11px;color:var(--text-muted);padding-left:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%}
+/* Read-only heading name: same type as the Gantt heading input */
+.heading-name{font-family:var(--font);font-size:12px;font-weight:700;letter-spacing:.01em;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;padding-left:2px}
+.date-display{font-family:var(--font-mono);font-size:11px;padding:2px 3px;white-space:nowrap;overflow:hidden;width:100%;opacity:.8;cursor:default}
+.days-text{font-family:var(--font-mono);font-size:11px;opacity:.7;width:100%;text-align:center}
+.comments-cell{overflow:hidden}
+.comments-text{font-family:var(--font);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%}
+.heading-color-btn{width:16px;height:16px;border-radius:3px;border:2px solid rgba(0,0,0,.2);cursor:pointer;flex-shrink:0;padding:0;background:transparent}
+.heading-del-btn{background:none;border:none;cursor:pointer;font-size:14px;padding:0 4px;line-height:1;display:flex;align-items:center;justify-content:center;width:100%;opacity:.5}
+.heading-del-btn:hover{opacity:1;color:var(--bar-crit)!important}
+
+/* Fee entry. Shows $0.00 at rest, a plain number while editing. */
+.fee-cell{padding:0 2px!important}
+.fee-input{border:none;background:transparent;font-family:var(--font-mono);font-size:11px;font-weight:600;line-height:28px;width:100%;outline:none;text-align:right;padding:0 5px 0 2px;min-width:0;vertical-align:middle;border-radius:2px}
+.fee-input:hover{background:rgba(255,255,255,.55)}
+.fee-input:focus{background:var(--accent-light);color:var(--text)!important}
+.fee-input::placeholder{opacity:.45;font-weight:400}
+.fee-input.unallocated{text-decoration:underline wavy #d97706;text-underline-offset:3px}
+.fee-input.invalid{background:#fee2e2!important}
+
+/* Cross-panel row highlight */
+.heading-row.row-hl,.gantt-heading-row.row-hl{filter:brightness(.97)}
+.task-row.row-hl,.gantt-row.row-hl{background:var(--row-hover)}
+
+/* GANTT */
+#right-panel{flex:1;display:flex;flex-direction:column;overflow:hidden;background:#fff;position:relative}
+#gantt-header{overflow-x:scroll;overflow-y:hidden;flex-shrink:0;background:#f0efe9;border-bottom:1px solid var(--border-strong);scrollbar-width:none;-ms-overflow-style:none}
+/* Month row is placed from true calendar month edges (xForDate), not from
+   whole weeks, because a monthly forecast is reported by calendar month and
+   the totals cells beneath must line up with the label above them. */
+.gantt-month-row{position:relative;height:16px;border-bottom:1px solid var(--border)}
+.gantt-month-label{position:absolute;top:0;height:100%;display:flex;align-items:center;padding:0 6px;font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;border-right:1px solid var(--border-strong);white-space:nowrap;overflow:hidden}
+.gantt-week-row{display:flex;height:16px;border-bottom:1px solid var(--border)}
+.gantt-week-cell{display:flex;align-items:center;justify-content:center;font-size:9px;font-family:var(--font-mono);color:var(--text-faint);border-right:1px solid var(--border);flex-shrink:0;overflow:hidden;white-space:nowrap}
+.gantt-week-cell.is-current{background:#fee2e2;color:#dc2626;font-weight:700}
+.gantt-day-row{display:flex;height:16px;position:relative}
+.gantt-day-cell{position:absolute;top:0;height:100%;display:flex;align-items:center;justify-content:center;font-size:9px;font-family:var(--font-mono);color:var(--text-faint);overflow:hidden;white-space:nowrap;z-index:1}
+.gantt-day-cell.is-nonwork{color:var(--text-faint);opacity:.55}
+.gantt-day-cell.is-today{background:#fee2e2;color:#dc2626;font-weight:700}
+.gantt-day-cell.is-custom{text-decoration:underline;text-underline-offset:2px}
+.nonwork-band{position:absolute;top:0;height:100%;background:var(--nonwork-band);pointer-events:none;z-index:0}
+#nonwork-bands{position:absolute;top:0;left:0;pointer-events:none;z-index:0}
+#nonwork-bands .nonwork-band{z-index:auto}
+
+/* Totals row: the week-by-week (or month-by-month) sum across every
+   heading. Sits directly under the date rows. */
+.gantt-totals-row.tall{height:30px}
+.gantt-totals-row{position:relative;height:20px;border-top:1px solid var(--border-strong);background:var(--totals-bg)}
+.total-cell{position:absolute;top:0;height:100%;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:10px;font-weight:700;color:var(--text);border-right:1px solid var(--border-strong);white-space:nowrap;overflow:hidden}
+.total-cell.is-zero{color:var(--text-faint);font-weight:400}
+.total-cell.is-current{background:#fee2e2;color:#dc2626}
+
+#gantt-body{flex:1;overflow:auto;position:relative}
+#gantt-canvas-wrap{position:relative}
+
+.gantt-heading-row{height:29px;border-bottom:1px solid rgba(0,0,0,.08);position:relative}
+.gantt-row{height:29px;position:relative;border-bottom:1px solid var(--row-line)}
+.gantt-row.inv-row{cursor:context-menu}
+/* Actual row: no bars, just the invoices entered. Click a week or month
+   to enter one; a dashed box shows which period the click will land in. */
+.gantt-row.act-row{cursor:pointer;background:repeating-linear-gradient(90deg,transparent 0 3px,rgba(0,0,0,.012) 3px 4px)}
+.act-hover{position:absolute;top:5px;bottom:5px;border:1px dashed var(--border-strong);border-radius:3px;pointer-events:none;z-index:2;display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-faint);background:rgba(255,255,255,.6)}
+/* Sub-row bars: same as a Gantt subtask bar in its heading colour */
+.gantt-bar{position:absolute;top:7px;height:15px;border-radius:3px;box-shadow:0 1px 3px rgba(0,0,0,.18);z-index:3;overflow:hidden}
+/* Heading bar: the Gantt's EXPANDED heading look (light, one bar per work
+   segment), so the Budget and Invoiced bars beneath carry the figures. */
+.gantt-heading-bar{position:absolute;top:7px;height:15px;border-radius:3px;z-index:3;overflow:hidden}
+/* Period dividers inside a bar, so a bar reads as a run of weeks/months */
+.period-tick{position:absolute;top:0;bottom:0;width:1px;pointer-events:none}
+/* One figure per period, laid over the bar */
+.fee-label{position:absolute;top:7px;height:15px;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:9px;font-weight:600;white-space:nowrap;z-index:4;border-radius:3px;line-height:1;cursor:default}
+.fee-label.pill{box-shadow:0 0 0 1px rgba(255,255,255,.7)}
+/* Invoiced figures typed in by hand: white tag with a border in the
+   heading colour. Dashed when the period only partly contains an
+   override (a weekly figure inside an overridden month, or the reverse). */
+.fee-label.ovr{background:#fff!important;font-weight:700;box-shadow:none}
+.fee-label.ovr.partial{border-style:dashed!important}
+/* Several invoices in one period stack, one line each */
+/* Invoice boxes: text right-aligned, towards the invoice date at the end
+   of the period, where the amount is counted */
+.fee-label.inv-box{justify-content:flex-end;padding-right:3px}
+.fee-label.stack{flex-direction:column;justify-content:center;gap:0;line-height:11px}
+.fee-label span{white-space:nowrap}
+.fee-label.neg{color:#dc2626!important}
+.bar-ext-label{position:absolute;top:8px;white-space:nowrap;font-size:10px;font-weight:700;text-transform:uppercase;pointer-events:none;z-index:4;line-height:1}
+
+#gantt-grid-overlay{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:1}
+#period-lines{position:absolute;top:0;left:0;pointer-events:none;z-index:1}
+.month-line{position:absolute;top:0;width:1px;background:var(--border-strong)}
+.month-line.billing-line{background:none;border-left:1px dashed #9e9c97}
+
+#today-line{position:absolute;top:0;width:2px;background:#ef4444;opacity:.7;pointer-events:none;z-index:6}
+#today-label{position:absolute;top:1px;font-size:9px;font-weight:700;color:#ef4444;background:#fee2e2;padding:1px 3px;border-radius:2px;pointer-events:none;z-index:7;transform:translateX(-50%);white-space:nowrap}
+
+/* Empty state */
+#empty-state{position:absolute;inset:119px 0 0 0;display:none;align-items:center;justify-content:center;z-index:10;pointer-events:none}
+#empty-state .es-card{pointer-events:auto;background:#fff;border:1px solid var(--border);border-radius:8px;padding:22px 26px;max-width:420px;box-shadow:0 4px 18px rgba(0,0,0,.06);text-align:left}
+#empty-state h2{font-size:14px;color:var(--text);margin-bottom:8px}
+#empty-state ol{font-size:12px;color:var(--text-muted);padding-left:18px;line-height:1.7;margin-bottom:14px}
+
+/* RESIZE HANDLE */
+#resize-handle{width:4px;cursor:col-resize;background:var(--border-strong);flex-shrink:0;transition:background .15s}
+#resize-handle:hover{background:var(--accent)}
+
+/* STATUS BAR */
+#statusbar{height:24px;background:#0f172a;color:#64748b;font-size:10px;font-family:var(--font-mono);display:flex;align-items:center;padding:0 12px;gap:16px;flex-shrink:0}
+#statusbar span{white-space:nowrap}
+#sb-warn{color:#f59e0b}
+
+/* TOOLTIP */
+#tooltip{position:fixed;background:#1e293b;color:#f1f5f9;padding:6px 10px;border-radius:6px;font-size:11px;pointer-events:none;z-index:1000;display:none;box-shadow:0 4px 12px rgba(0,0,0,.3);max-width:300px;line-height:1.6}
+#tooltip .tt-row{display:flex;gap:10px;justify-content:space-between;font-family:var(--font-mono);font-size:10px}
+#tooltip .tt-dot{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px;vertical-align:0}
+
+/* Colour picker popup */
+#color-popup{position:fixed;z-index:950;background:#1e293b;border-radius:8px;box-shadow:0 8px 28px rgba(0,0,0,.35);padding:10px;display:none;flex-direction:column;gap:8px;align-items:center}
+#color-popup.visible{display:flex}
+#color-popup input[type=color]{width:160px;height:100px;border:none;padding:0;cursor:pointer;border-radius:4px;background:none}
+#color-popup .color-ok{width:100%;padding:5px;background:#3b82f6;color:#fff;border:none;border-radius:4px;font-size:12px;font-family:var(--font);font-weight:600;cursor:pointer}
+#color-popup .color-ok:hover{background:#2563eb}
+#color-popup .color-hint{font-size:10px;color:#64748b;text-align:center}
+
+/* Right-click menu on the Invoiced bars */
+#ctx-menu{position:fixed;z-index:800;background:#fff;border:1px solid var(--border-strong);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.15);display:none;min-width:230px;padding:3px 0}
+#ctx-menu.visible{display:block}
+.ctx-title{padding:6px 14px 4px;font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em;white-space:nowrap}
+.ctx-item{padding:7px 14px;font-size:12px;cursor:pointer;color:var(--text);display:flex;align-items:center;gap:8px}
+.ctx-item:hover{background:var(--accent-light);color:var(--accent)}
+.ctx-item.danger{color:var(--bar-crit)}
+.ctx-item.danger:hover{background:#fee2e2}
+.ctx-item.info{cursor:default;color:var(--text-muted);font-size:11px;max-width:260px;white-space:normal;line-height:1.45}
+.ctx-item.info:hover{background:none;color:var(--text-muted)}
+.ctx-sep{height:1px;background:var(--border);margin:3px 0}
+
+/* Override entry popup */
+#ovr-popup{position:fixed;z-index:900;background:#fff;border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,.22);padding:12px;width:290px;display:none;font-family:var(--font)}
+#ovr-popup.visible{display:block}
+#ovr-popup .op-title{font-size:12px;font-weight:700;color:var(--text);margin-bottom:2px}
+#ovr-popup .op-sub{font-size:11px;color:var(--text-muted);margin-bottom:8px}
+#ovr-popup input{width:100%;min-width:0;padding:6px 9px;border:1px solid #c8c4bc;border-radius:4px;font-size:13px;font-family:var(--font-mono);text-align:right}
+#ovr-popup input:focus{outline:none;border-color:#3b82f6}
+#ovr-popup input.invalid{border-color:#dc2626;background:#fee2e2}
+#ovr-popup .op-row{display:flex;gap:6px;align-items:center;margin-bottom:6px}
+#ovr-popup .op-row .op-lbl{width:96px;flex:none;text-align:left}
+#ovr-popup .op-del{border:none;background:none;color:var(--text-faint);cursor:pointer;font-size:13px;width:18px;flex:none;padding:0}
+#ovr-popup .op-del:hover{color:var(--bar-crit)}
+#ovr-popup .op-hint{font-size:11px;color:var(--text-muted);line-height:1.45;margin:8px 0 10px;min-height:32px}
+#ovr-popup .op-hint.warn{color:#b45309}
+
+/* Message / choice modal */
+.modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:800;align-items:center;justify-content:center}
+.modal-card{background:#fff;border-radius:10px;padding:24px;width:360px;box-shadow:0 20px 60px rgba(0,0,0,.3);font-family:var(--font)}
+.modal-card h2{font-size:15px;margin-bottom:12px;color:#1e293b}
+.modal-btn{padding:6px 14px;border:1px solid #c8c4bc;border-radius:4px;background:none;cursor:pointer;font-size:12px;font-family:var(--font)}
+.modal-btn.primary{background:#3b82f6;border-color:#3b82f6;color:#fff;font-weight:600}
+#msg-body{font-size:12px;color:#4a4842;line-height:1.55;margin-bottom:16px;max-height:50vh;overflow:auto}
+#msg-body ul{padding-left:18px;margin:6px 0}
+#msg-body .muted{color:#6b6860}
+
+::-webkit-scrollbar{width:6px;height:6px}
+#gantt-header::-webkit-scrollbar{display:none}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:#94a3b8}
+
+/* ═══ PRINT / VECTOR PDF ═══ (same mechanism as GanttTool.html) */
+#print-header{display:none}
+#print-wrap{overflow:hidden}
+@media print{
+  html,body{height:auto!important;overflow:visible!important;background:#fff!important}
+  body{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
+  body.printing{display:block!important}
+  body.printing #topbar,
+  body.printing #statusbar,
+  body.printing #resize-handle,
+  body.printing #tooltip,
+  body.printing #color-popup,
+  body.printing #ctx-menu,
+  body.printing #ovr-popup,
+  body.printing #settings-modal,
+  body.printing .modal-bg,
+  body.printing #empty-state,
+  body.printing .col-resize-grip{display:none!important}
+  body.printing #print-header{display:block!important}
+  body.printing #main,
+  body.printing #left-panel,
+  body.printing #left-body,
+  body.printing #right-panel,
+  body.printing #gantt-body,
+  body.printing #gantt-header{overflow:visible!important}
+  body.printing .heading-del-btn,
+  body.printing .row-handle{visibility:hidden!important}
+}
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <h1>Forecast</h1>
+  <div class="tb-sep"></div>
+  <span class="tb-label">Project start</span>
+  <input type="text" id="project-start-display" class="tb-input" readonly placeholder="From programme" style="width:110px;cursor:default" title="Set in the Gantt programme. Week 1 is the week containing this date.">
+  <div class="tb-sep"></div>
+  <span class="tb-label">Zoom</span>
+  <button class="tb-btn tb-btn-ghost" onclick="adjustZoom(-1)" style="padding:4px 8px">−</button>
+  <input id="zoom-val" type="number" min="2" max="80" value="10"
+    style="width:40px;text-align:center;background:#0f172a;border:1px solid #334155;color:#f1f5f9;border-radius:4px;font-size:12px;padding:3px 4px;font-family:var(--font-mono)"
+    onchange="setZoom(+this.value)" onkeydown="if(event.key==='Enter')this.blur()"
+    title="Pixels per day (2–80)">
+  <button class="tb-btn tb-btn-ghost" onclick="adjustZoom(1)" style="padding:4px 8px">+</button>
+  <span class="tb-label" style="margin-left:2px">px/day</span>
+  <div class="tb-sep"></div>
+  <button class="tb-btn tb-btn-primary" onclick="importJSON()" title="Open the programme JSON from the Gantt tool. Fees and actual invoices saved in it come back too.">Import JSON</button>
+  <button id="undo-btn" class="tb-btn tb-btn-ghost" onclick="undo()" style="opacity:0.35;font-size:13px;padding:4px 10px" title="Nothing to undo">↩ Undo</button>
+  <button id="redo-btn" class="tb-btn tb-btn-ghost" onclick="redo()" style="opacity:0.35;font-size:13px;padding:4px 10px" title="Nothing to redo">↪ Redo</button>
+  <button class="tb-btn tb-btn-ghost" onclick="reloadJSON()" title="Read the programme JSON again now, to pick up changes just saved in the Gantt tool. Your fees and invoices on screen are kept.">↻ Reload JSON</button>
+  <button id="save-btn" class="tb-btn tb-btn-ghost" onclick="exportJSON()" title="Save the fees and actual invoices back into the programme JSON, the same file the Gantt tool uses">Save JSON</button>
+  <button class="tb-btn tb-btn-ghost" onclick="exportCSV()" style="border-color:#10b981;color:#10b981" title="Spreadsheet of the forecast, one column per week or month as shown on screen">Export CSV</button>
+  <button class="tb-btn tb-btn-ghost" onclick="openPDFModal()" style="border-color:#f59e0b;color:#f59e0b">⬇ PDF</button>
+  <button class="tb-btn tb-btn-ghost" onclick="openImageModal()" style="border-color:#0ea5e9;color:#0ea5e9">🖼 Image</button>
+  <div style="flex:1"></div>
+  <button id="nonwork-btn" class="tb-btn tb-btn-ghost" onclick="toggleNonWorkBands()" title="Show the working day calendar: shades weekends, public holidays and any days marked non-working in the programme">Working days</button>
+  <div class="seg-toggle" id="breakdown-toggle">
+    <button id="bd-weekly" onclick="setBreakdown('weekly')">Weekly</button>
+    <button id="bd-billing" onclick="setBreakdown('billing')">Billing period</button>
+  </div>
+  <button class="tb-btn tb-btn-ghost" onclick="openSettings()" title="Global settings: billing period">⚙ Settings</button>
+</div>
+
+<div id="print-header"></div>
+<div id="main">
+  <div id="left-panel">
+    <div id="left-header">
+      <div id="left-header-cols">
+        <div class="lh-cell"></div>
+        <div class="lh-cell"></div>
+        <div class="lh-cell"></div>
+        <div class="lh-cell">Heading</div>
+        <div class="lh-cell"></div>
+        <div class="lh-cell" style="justify-content:flex-end">Total fee</div>
+        <div class="lh-cell" style="overflow:visible">Comments</div>
+      </div>
+      <div id="left-totals-b" class="left-totals tall"></div>
+      <div id="left-totals-i" class="left-totals"></div>
+      <div id="left-totals-a" class="left-totals"></div>
+      <div id="name-col-resize" class="col-resize-grip" title="Drag to resize Heading column"></div>
+    </div>
+    <div id="left-body"></div>
+  </div>
+  <div id="resize-handle"></div>
+  <div id="right-panel">
+    <div id="gantt-header"><div id="gantt-header-inner"></div></div>
+    <div id="gantt-body">
+      <div id="gantt-canvas-wrap">
+        <div id="today-label">TODAY</div>
+        <div id="today-line"></div>
+        <div id="nonwork-bands"></div>
+        <div id="gantt-grid-overlay"></div>
+        <div id="period-lines"></div>
+        <div id="gantt-rows"></div>
+      </div>
+    </div>
+    <div id="empty-state">
+      <div class="es-card">
+        <h2>No programme loaded</h2>
+        <ol>
+          <li>In the Gantt tool, set up the programme with headings and click <strong>Export JSON</strong>.</li>
+          <li>Click <strong>Import JSON</strong> here and pick that file.</li>
+          <li>Enter the total fee against each heading, and actual invoices on the Actual rows.</li>
+          <li>Click <strong>Save JSON</strong>. The figures go back into the same file, and the Gantt tool keeps them.</li>
+        </ol>
+        <button class="tb-btn tb-btn-primary" onclick="importJSON()">Import JSON</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="statusbar">
+  <span id="sb-headings">0 headings</span>
+  <span id="sb-total">–</span>
+  <span id="sb-span">–</span>
+  <span id="sb-warn"></span>
+  <span id="sb-hidden" style="color:#93c5fd;cursor:pointer;display:none" onclick="restoreHidden()"></span>
+  <div style="flex:1"></div>
+  <span id="sb-source" style="color:#475569"></span>
+  <span style="color:#334155">Enter the total fee per heading · Click the Actual row to enter an invoice</span>
+</div>
+
+<div id="tooltip"></div>
+
+<!-- Colour picker popup -->
+<div id="color-popup">
+  <input type="color" id="color-input" value="#7c3aed">
+  <div class="color-hint">Enter to confirm · Escape to cancel</div>
+  <button class="color-ok" onclick="commitColor()">OK — apply colour</button>
+</div>
+
+<!-- Invoiced right-click menu -->
+<div id="ctx-menu">
+  <div class="ctx-title" id="ctx-title"></div>
+  <div id="ctx-items"></div>
+</div>
+
+<!-- Override entry -->
+<div id="ovr-popup">
+  <div class="op-title" id="op-title"></div>
+  <div class="op-sub" id="op-sub"></div>
+  <div id="op-rows"></div>
+  <div class="op-hint" id="op-hint"></div>
+  <div style="display:flex;gap:8px;justify-content:flex-end">
+    <button class="modal-btn" onclick="closeOverridePopup()">Cancel</button>
+    <button class="modal-btn primary" onclick="commitOverride()">Apply</button>
+  </div>
+</div>
+
+<!-- Message / choice modal -->
+<div id="msg-modal" class="modal-bg">
+  <div class="modal-card" style="width:420px">
+    <h2 id="msg-title"></h2>
+    <div id="msg-body"></div>
+    <div id="msg-buttons" style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap"></div>
+  </div>
+</div>
+
+<!-- Global settings -->
+<div id="settings-modal" class="modal-bg">
+  <div class="modal-card" style="width:440px">
+    <h2>Settings</h2>
+    <div style="font-size:11px;font-weight:700;color:#6b6860;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Billing period</div>
+    <label style="font-size:11px;color:#6b6860;display:block;margin-bottom:4px">Invoiced</label>
+    <select id="set-freq" onchange="onSettingsInput()" style="width:100%;padding:6px 9px;border:1px solid #c8c4bc;border-radius:4px;font-size:13px;margin-bottom:12px;font-family:var(--font)">
+      <option value="fortnightly">Fortnightly</option>
+      <option value="monthly">Monthly</option>
+      <option value="quarterly">Quarterly</option>
+    </select>
+    <label id="set-day-label" style="font-size:11px;color:#6b6860;display:block;margin-bottom:4px">Invoice day</label>
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:4px">
+      <input id="set-day" type="number" min="1" max="31" oninput="onSettingsInput()" style="width:80px;padding:6px 9px;border:1px solid #c8c4bc;border-radius:4px;font-size:13px;font-family:var(--font-mono)">
+      <label id="set-last-wrap" style="font-size:12px;color:#4a4842;display:flex;align-items:center;gap:6px;cursor:pointer"><input id="set-last" type="checkbox" onchange="onSettingsInput()"> <span id="set-last-text">Last day</span></label>
+    </div>
+    <div id="set-day-help" style="font-size:11px;color:#6b6860;line-height:1.45;margin-bottom:12px"></div>
+    <div style="font-size:11px;color:#6b6860;margin-bottom:4px">Next invoices</div>
+    <div id="set-preview" style="font-size:11px;line-height:1.6;color:#4a4842;background:#f5f3ef;border:1px solid #e5e1d8;border-radius:4px;padding:7px 9px;margin-bottom:16px;font-family:var(--font-mono)"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="modal-btn" onclick="closeSettings()">Cancel</button>
+      <button class="modal-btn primary" onclick="applySettings()">Apply</button>
+    </div>
+  </div>
+</div>
+
+<!-- PDF Export Modal -->
+<div id="pdf-modal" class="modal-bg">
+  <div class="modal-card">
+    <h2 style="margin-bottom:16px">Export to PDF</h2>
+    <label style="font-size:11px;color:#6b6860;display:block;margin-bottom:4px">Project / chart title</label>
+    <input id="pdf-title" type="text" value="Fee Forecast" style="width:100%;padding:6px 9px;border:1px solid #c8c4bc;border-radius:4px;font-size:13px;margin-bottom:12px;font-family:var(--font)">
+    <label style="font-size:11px;color:#6b6860;display:block;margin-bottom:4px">Method</label>
+    <select id="pdf-method" onchange="onPDFMethodChange()" style="width:100%;padding:6px 9px;border:1px solid #c8c4bc;border-radius:4px;font-size:13px;margin-bottom:12px;font-family:var(--font)">
+      <option value="vector" selected>Vector (sharp text, for issuing)</option>
+      <option value="image">Image (exact on-screen copy)</option>
+    </select>
+    <label style="font-size:11px;color:#6b6860;display:block;margin-bottom:4px">Page size</label>
+    <select id="pdf-pagesize" onchange="updatePDFPreview()" style="width:100%;padding:6px 9px;border:1px solid #c8c4bc;border-radius:4px;font-size:13px;margin-bottom:12px;font-family:var(--font)">
+      <option value="a4">A4</option>
+      <option value="a3" selected>A3</option>
+      <option value="a2">A2</option>
+      <option value="a1">A1</option>
+      <option value="a0">A0</option>
+      <option value="letter">Letter</option>
+    </select>
+    <label style="font-size:11px;color:#6b6860;display:block;margin-bottom:4px">Orientation</label>
+    <select id="pdf-orient" onchange="updatePDFPreview()" style="width:100%;padding:6px 9px;border:1px solid #c8c4bc;border-radius:4px;font-size:13px;margin-bottom:12px;font-family:var(--font)">
+      <option value="landscape" selected>Landscape</option>
+      <option value="portrait">Portrait</option>
+    </select>
+    <label style="font-size:11px;color:#6b6860;display:block;margin-bottom:4px">Fit</label>
+    <select id="pdf-fit" onchange="updatePDFPreview()" style="width:100%;padding:6px 9px;border:1px solid #c8c4bc;border-radius:4px;font-size:13px;margin-bottom:12px;font-family:var(--font)">
+      <option value="page" selected>Whole chart on one page</option>
+      <option value="width">Fit page width, continue down pages</option>
+      <option value="actual" id="pdf-fit-actual">Actual size, tile across pages</option>
+    </select>
+    <label id="pdf-quality-label" style="font-size:11px;color:#6b6860;display:block;margin-bottom:4px">Quality</label>
+    <select id="pdf-quality" style="width:100%;padding:6px 9px;border:1px solid #c8c4bc;border-radius:4px;font-size:13px;margin-bottom:16px;font-family:var(--font)">
+      <option value="2" selected>Standard (2x)</option>
+      <option value="3">High (3x)</option>
+      <option value="4">Very high (4x, slow)</option>
+    </select>
+    <div id="pdf-fit-preview" style="font-size:11px;line-height:1.45;color:#6b6860;background:#f5f3ef;border:1px solid #e5e1d8;border-radius:4px;padding:7px 9px;margin-bottom:12px"></div>
+    <div id="pdf-status" style="font-size:11px;color:#6b6860;min-height:18px;margin-bottom:12px"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="modal-btn" onclick="closePDFModal()">Cancel</button>
+      <button onclick="exportPDF()" id="pdf-go-btn" style="padding:6px 14px;background:#f59e0b;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:12px;font-weight:600;font-family:var(--font)">Export PDF</button>
+    </div>
+  </div>
+</div>
+
+<div id="image-modal" class="modal-bg">
+  <div class="modal-card">
+    <h2 style="margin-bottom:16px">Export as Image</h2>
+    <label style="font-size:11px;color:#6b6860;display:block;margin-bottom:4px">Resolution</label>
+    <select id="image-scale" style="width:100%;padding:6px 9px;border:1px solid #c8c4bc;border-radius:4px;font-size:13px;margin-bottom:12px;font-family:var(--font)">
+      <option value="1">Standard (1x)</option>
+      <option value="2" selected>High resolution (2x)</option>
+      <option value="3">Very high resolution (3x)</option>
+    </select>
+    <p style="font-size:11px;color:#6b6860;margin-bottom:16px;line-height:1.5">Captures the whole forecast, the heading list and the full timeline, as a single PNG image, exactly as it appears on screen.</p>
+    <div id="image-status" style="font-size:11px;color:#6b6860;min-height:18px;margin-bottom:12px"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="modal-btn" onclick="closeImageModal()">Cancel</button>
+      <button onclick="exportImage()" id="image-go-btn" style="padding:6px 14px;background:#0ea5e9;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:12px;font-weight:600;font-family:var(--font)">Export Image</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════
+//  DATA
+// ═══════════════════════════════════════════════════════
+// One entry per programme heading shown in the forecast. Name, dates,
+// comments and programme colour come from the Gantt JSON and are read-only.
+//   segments:  the heading's work periods (direct, non-indirect subtasks merged)
+//   fee:       TOTAL FEE in dollars, held to whole cents
+//   actuals:   actual invoices entered on the Actual row, see allocateHeading()
+//   fcColor:   a colour set here (null = follow the programme colour)
+//   order / excluded: position and visibility in the forecast only
+let headings = [];        // shown, in forecast order
+let hiddenHeadings = [];  // removed from the forecast (the programme still has them)
+let programmeDoc = null;  // the whole Gantt JSON as loaded; saved back with figures added
+let fileHandle = null;    // linked file, when the browser allows writing straight back
+let fileStamp = 0;        // lastModified of the linked file when last read or written
+let savedFiguresSig = ''; // figures as last loaded or saved, for the unsaved marker
+let pxPerDay = 10;
+let projectStartStr = '';      // YYYY-MM-DD, from the programme (week 1 reference)
+let durationMode = 'days';     // 'days' | 'weeks', display only
+let showNonWorkBands = false;  // view state
+let breakdownPref = 'weekly';  // what the user chose
+let breakdownView = 'weekly';  // what is actually drawn (billing periods when weekly will not fit)
+let breakdownForced = false;   // true when weekly was chosen but does not fit
+let weeklyMinZoom = 0;         // smallest px/day at which weekly figures fit
+let programmeSource = '';      // file name of the last Gantt export imported
+
+const HOLIDAYS = new Set([
+  // NSW public holidays (weekends handled separately). Bank Holiday
+  // (first Monday in August) is deliberately omitted — it is NOT a
+  // declared public holiday, only a banking-sector closure.
+  // 2025
+  '2025-01-01', // New Year's Day
+  '2025-01-27', // Australia Day (observed, 26th was a Sunday)
+  '2025-04-18', // Good Friday
+  '2025-04-19', // Easter Saturday
+  '2025-04-20', // Easter Sunday
+  '2025-04-21', // Easter Monday
+  '2025-04-25', // Anzac Day
+  '2025-06-09', // King's Birthday
+  '2025-10-06', // Labour Day
+  '2025-12-25', // Christmas Day
+  '2025-12-26', // Boxing Day
+  // 2026
+  '2026-01-01', // New Year's Day
+  '2026-01-26', // Australia Day
+  '2026-04-03', // Good Friday
+  '2026-04-04', // Easter Saturday
+  '2026-04-05', // Easter Sunday
+  '2026-04-06', // Easter Monday
+  '2026-04-25', // Anzac Day
+  '2026-04-27', // Anzac Day additional (25th was a Saturday)
+  '2026-06-08', // King's Birthday
+  '2026-10-05', // Labour Day
+  '2026-12-25', // Christmas Day
+  '2026-12-26', // Boxing Day
+  '2026-12-28', // Boxing Day additional (26th was a Saturday)
+  // 2027
+  '2027-01-01', // New Year's Day
+  '2027-01-26', // Australia Day
+  '2027-03-26', // Good Friday
+  '2027-03-27', // Easter Saturday
+  '2027-03-28', // Easter Sunday
+  '2027-03-29', // Easter Monday
+  '2027-04-25', // Anzac Day
+  '2027-06-14', // King's Birthday
+  '2027-10-04', // Labour Day
+  '2027-12-25', // Christmas Day
+  '2027-12-27', // Christmas Day additional (25th was a Saturday)
+  '2027-12-26', // Boxing Day
+  '2027-12-28', // Boxing Day additional (26th was a Sunday)
+]);
+
+// Per-date exceptions to the standard calendar, carried across from the
+// Gantt programme. true = force working, false = force non-working.
+// Read-only in this tool: the programme owns the calendar.
+let workdayOverrides = {};
+
+const DAY_ROW_MIN_ZOOM = 12;
+const ROW_H = 29;
+
+// ═══════════════════════════════════════════════════════
+//  CALENDAR AND DATE HELPERS (same rules as GanttTool.html)
+//  Never step dates by adding 86400000ms and never derive a day count by
+//  dividing a millisecond difference. Use addDay and daysBetween.
+// ═══════════════════════════════════════════════════════
+function isWorkday(date) {
+  const d = typeof date === 'string' ? new Date(date+'T00:00:00') : date;
+  const key = fmt(d);
+  if (Object.prototype.hasOwnProperty.call(workdayOverrides, key)) return !!workdayOverrides[key];
+  if (d.getDay()===0||d.getDay()===6) return false;
+  return !HOLIDAYS.has(key);
+}
+function nonWorkReason(str){
+  const d=new Date(str+'T00:00:00');
+  if(Object.prototype.hasOwnProperty.call(workdayOverrides,str))
+    return workdayOverrides[str] ? 'Working day (set in programme)' : 'Non-working day (set in programme)';
+  if(d.getDay()===0||d.getDay()===6) return 'Weekend';
+  if(HOLIDAYS.has(str)) return 'Public holiday';
+  return null;
+}
+function nonWorkRuns(minD,maxD){
+  const runs=[]; let runStart=null, prev=null;
+  for(let d=dayStart(minD); d<=maxD; d=addDay(d)){
+    const str=fmt(d);
+    if(!isWorkday(str)){ if(runStart===null) runStart=str; prev=str; }
+    else if(runStart!==null){ runs.push({start:runStart,end:prev}); runStart=null; }
+  }
+  if(runStart!==null) runs.push({start:runStart,end:prev});
+  return runs.map(r=>{ const x=xForDate(r.start); const x2=xForDate(r.end)+pxPerDay; return {x, w:Math.max(1,x2-x)}; });
+}
+function workdaysInRange(a,b){
+  let n=0;
+  for(let d=dayStart(a); d<=b; d=addDay(d)) if(isWorkday(fmt(d))) n++;
+  return n;
+}
+function fmt(d) {
+  if (!d) return '';
+  const obj = typeof d==='string' ? new Date(d+'T00:00:00') : d;
+  if (isNaN(obj)) return '';
+  return `${obj.getFullYear()}-${String(obj.getMonth()+1).padStart(2,'0')}-${String(obj.getDate()).padStart(2,'0')}`;
+}
+function fmtDisplay(str) {
+  if (!str) return '';
+  const [y,m,d] = str.split('-');
+  return `${d}/${m}/${y}`;
+}
+function parseDate(str) {
+  if (!str) return null;
+  const d = new Date(str+'T00:00:00');
+  return isNaN(d) ? null : d;
+}
+function dayStart(v){
+  const d = typeof v==='string' ? new Date(v+'T00:00:00') : new Date(v);
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+function addDay(v, n){
+  const d = dayStart(v);
+  d.setDate(d.getDate() + (n===undefined?1:n));
+  return d;
+}
+function daysBetween(a, b) {
+  const da = dayStart(a), db = dayStart(b);
+  const ua = Date.UTC(da.getFullYear(), da.getMonth(), da.getDate());
+  const ub = Date.UTC(db.getFullYear(), db.getMonth(), db.getDate());
+  return Math.round((ub-ua)/86400000);
+}
+// Next workday strictly after str (used to merge touching segments)
+function workdayAfter(str) {
+  let d = new Date(str+'T00:00:00');
+  d.setDate(d.getDate()+1);
+  while (!isWorkday(d)) d.setDate(d.getDate()+1);
+  return fmt(d);
+}
+// Monday of the week containing a date
+function mondayOf(v){ const d=dayStart(v); return addDay(d, -((d.getDay()+6)%7)); }
+
+function fmtDuration(workingDays) {
+  if(durationMode === 'days') return String(workingDays);
+  const w = Math.floor(workingDays / 5), d = workingDays % 5;
+  if(w === 0) return d + 'd';
+  if(d === 0) return w + 'w';
+  return w + 'w ' + d + 'd';
+}
+function lightenHex(hex, factor) {
+  hex = (hex||'#64748b').replace('#','');
+  if(hex.length===3) hex=hex[0]+hex[0]+hex[1]+hex[1]+hex[2]+hex[2];
+  const r=parseInt(hex.slice(0,2),16), g=parseInt(hex.slice(2,4),16), b=parseInt(hex.slice(4,6),16);
+  return '#'+[r,g,b].map(v=>Math.round(v*factor+255*(1-factor)).toString(16).padStart(2,'0')).join('');
+}
+// White or near-black text, whichever reads on the given fill
+function textOn(hex){
+  hex = (hex||'#64748b').replace('#','');
+  if(hex.length===3) hex=hex[0]+hex[0]+hex[1]+hex[1]+hex[2]+hex[2];
+  const c=[0,2,4].map(i=>{ let v=parseInt(hex.slice(i,i+2),16)/255; return v<=0.03928?v/12.92:Math.pow((v+0.055)/1.055,2.4); });
+  const L=0.2126*c[0]+0.7152*c[1]+0.0722*c[2];
+  return L>0.42 ? '#1a1a18' : '#ffffff';
+}
+function escHtml(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+
+// ═══════════════════════════════════════════════════════
+//  MONEY
+//  All arithmetic is in whole cents so a heading's periods always add
+//  back to its fee exactly. Display rounds; the data never does.
+// ═══════════════════════════════════════════════════════
+const AUD = new Intl.NumberFormat('en-AU',{minimumFractionDigits:2,maximumFractionDigits:2});
+const AUD0 = new Intl.NumberFormat('en-AU',{maximumFractionDigits:0});
+function feeCents(h){ return Math.round((+h.fee||0)*100); }
+function money2(cents){ return (cents<0?'-$':'$')+AUD.format(Math.abs(cents)/100); }
+function money0(cents){ return (cents<0?'-$':'$')+AUD0.format(Math.round(Math.abs(cents)/100)); }
+function moneyCompact(cents){
+  const v=Math.abs(cents)/100, s=cents<0?'-$':'$';
+  const trim=x=>x.replace(/\.0+$/,'').replace(/(\.\d)0$/,'$1');
+  if(v>=1e6) return s+trim((v/1e6).toFixed(v>=1e7?1:2))+'m';
+  if(v>=1e3) return s+trim((v/1e3).toFixed(v>=1e5?0:1))+'k';
+  return s+Math.round(v);
+}
+// Accepts 12345, 12,345.50, $12,345.50, 120k, 1.2m. Returns dollars or null.
+function parseMoney(str){
+  let s=String(str||'').trim().toLowerCase().replace(/[$,\s]/g,'');
+  if(!s) return 0;
+  let mult=1;
+  if(s.endsWith('k')){ mult=1e3; s=s.slice(0,-1); }
+  else if(s.endsWith('m')){ mult=1e6; s=s.slice(0,-1); }
+  if(!/^\d*\.?\d*$/.test(s) || s==='.' ) return null;
+  const v=parseFloat(s)*mult;
+  if(!isFinite(v)) return null;
+  return Math.round(v*100)/100;
+}
+
+// ═══════════════════════════════════════════════════════
+//  PROGRAMME IMPORT
+//  Only the headings come across. Their dates are derived here exactly as
+//  the Gantt tool derives them (computeHeadingSegments): direct subtasks
+//  only, indirect tasks excluded, ranges merged when they overlap or touch
+//  across a non-working gap. The calendar must be loaded FIRST, because
+//  the merge uses workdayAfter().
+// ═══════════════════════════════════════════════════════
+function headingsFromGantt(d){
+  const tasks=Array.isArray(d.tasks)?d.tasks:[];
+  const isH=t=>t&&t.type==='heading';
+  const hIds=new Set(tasks.filter(isH).map(t=>t.id));
+  const out=[];
+  let progIndex=0;
+  tasks.forEach(t=>{
+    if(!isH(t)) return;
+    const members=tasks
+      .filter(x=>!isH(x)&&x.headingId===t.id&&x.start&&x.end&&!x.indirect)
+      .map(x=>({start:x.start,end:x.end}))
+      .sort((a,b)=>a.start<b.start?-1:a.start>b.start?1:0);
+    const segments=[];
+    members.forEach(m=>{
+      const last=segments[segments.length-1];
+      if(last && m.start<=workdayAfter(last.end)){ if(m.end>last.end) last.end=m.end; }
+      else segments.push({...m});
+    });
+    const h={id:t.id, name:t.name||'', progColor:t.color||'#64748b', comments:t.comments||'', segments, progIndex:progIndex++};
+    applyFigures(h, readForecastProp(t.forecast));
+    out.push(h);
+  });
+  const loose=tasks.filter(x=>!isH(x)&&!(x.headingId&&hIds.has(x.headingId))).length;
+  return {list:out, loose};
+}
+
+// ═══════════════════════════════════════════════════════
+//  FORECAST DATA INSIDE THE GANTT JSON
+//  The programme JSON is the one source of truth. Each heading task carries
+//  its own figures in a `forecast` property:
+//     forecast: { fee, actuals:[{start,end,cents,mode}], color?, order?,
+//                 excluded?, savedAt }
+//  GanttTool.html loads tasks whole and writes them back whole, so this
+//  property travels through the Gantt tool untouched (tested: import, edit,
+//  undo, add heading, export). Nothing else in the file is changed.
+// ═══════════════════════════════════════════════════════
+function readForecastProp(f){
+  f = (f && typeof f==='object') ? f : {};
+  return {
+    fee: Math.max(0, Math.round((+f.fee||0)*100)/100),
+    actuals: sanitiseActuals(f.actuals),
+    fcColor: (typeof f.color==='string' && /^#[0-9a-f]{3,6}$/i.test(f.color)) ? f.color : null,
+    order: Number.isFinite(f.order) ? f.order : null,
+    excluded: !!f.excluded,
+    billing: f.billing ? sanitiseBilling(f.billing) : null,
+    savedAt: typeof f.savedAt==='string' ? f.savedAt : ''
+  };
+}
+// Short invoice label, e.g. "INV01". A trailing colon is dropped (it is added on display).
+function cleanLabel(v){ return String(v==null?'':v).replace(/\s+/g,' ').trim().replace(/:+$/,'').trim().slice(0,16); }
+function sanitiseActuals(list){
+  return (Array.isArray(list)?list:[])
+    .filter(a=>a&&/^\d{4}-\d\d-\d\d$/.test(a.start)&&/^\d{4}-\d\d-\d\d$/.test(a.end)&&isFinite(+a.cents))
+    .map(a=>{ const o={start:a.start, end:a.end, cents:Math.round(+a.cents), mode:['monthly','billing'].includes(a.mode)?a.mode:'weekly'};
+               const l=cleanLabel(a.label); if(l) o.label=l; return o; })
+    .sort((x,y)=>x.start<y.start?-1:x.start>y.start?1:0);
+}
+// Copy figures onto a heading object (from a file, or from memory)
+function applyFigures(h, f){
+  h.fee=f.fee; h.actuals=f.actuals.map(a=>({...a}));
+  h.fcColor=f.fcColor; h.order=f.order; h.excluded=f.excluded; h.savedAt=f.savedAt||'';
+  h.fileBilling=f.billing||null;
+  h.color=h.fcColor||h.progColor;
+}
+function figuresOf(h){
+  return {fee:h.fee||0, actuals:(h.actuals||[]).map(a=>({...a})), fcColor:h.fcColor||null,
+          order:(h.order??null), excluded:!!h.excluded, savedAt:h.savedAt||''};
+}
+// What gets written into the file for a heading, or null when there is
+// nothing to keep (so untouched headings stay exactly as the Gantt wrote them).
+function forecastPayload(h){
+  const p={fee:h.fee||0, actuals:(h.actuals||[]).map(a=>({start:a.start,end:a.end,cents:a.cents,mode:a.mode,...(a.label?{label:a.label}:{})}))};
+  if(h.fcColor) p.color=h.fcColor;
+  if(h.order!=null) p.order=h.order;
+  if(h.excluded) p.excluded=true;
+  // The billing setting is project-wide. The Gantt tool rebuilds the top of
+  // the file on export, so it travels on the headings instead.
+  if(!isDefaultBilling(billing)) p.billing={...billing};
+  if(!p.fee && !p.actuals.length && !p.color && p.order==null && !p.excluded && !p.billing) return null;
+  return p;
+}
+
+function headingSpan(h){
+  if(!h.segments||!h.segments.length) return {start:'',end:''};
+  let end=h.segments[0].end;
+  h.segments.forEach(s=>{ if(s.end>end) end=s.end; });
+  return {start:h.segments[0].start, end};
+}
+
+// Working days the fee is spread over: every working day inside the
+// heading's segments. Gaps between segments carry no fee, which is what
+// the collapsed bar shows.
+function headingWorkdays(h){
+  const days=[];
+  (h.segments||[]).forEach(s=>{
+    const e=dayStart(s.end);
+    for(let d=dayStart(s.start); d<=e; d=addDay(d)){ const str=fmt(d); if(isWorkday(str)) days.push(str); }
+  });
+  return days;
+}
+
+// ═══════════════════════════════════════════════════════
+//  ALLOCATION
+//  A heading's fee is shared equally between its working days, in whole
+//  cents. Day i gets floor((i+1)C/N) - floor(iC/N): the shares telescope,
+//  so they always total C exactly, and the odd cents are spread evenly
+//  rather than piled onto the first days. Weeks and months are then plain
+//  sums of days, which is why the weekly and billing views always agree
+//  with each other and with the fee.
+// ═══════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════
+//  BILLING PERIODS (global setting)
+//  billing = {freq:'fortnightly'|'monthly'|'quarterly', day:N, last:bool}
+//    monthly     day N of each month (clamped to the month), or last day
+//    quarterly   day N of each calendar quarter (Jan, Apr, Jul, Oct),
+//                counted from the quarter's first day, or its last day
+//    fortnightly day N (1-14) of each fortnight, day 1 = Monday of week 1
+//  If the invoice day is not a working day it moves BACK to the last
+//  working day before it (never forward, never onto a non-working day).
+//  A billing period is the day after the previous invoice date up to and
+//  including this invoice date: for monthly on the 15th, 16th to 15th.
+//  The period's key IS its invoice date, so periodKey/periodBounds work for
+//  it exactly as they do for weeks and months, and every figure is still a
+//  plain sum of working days.
+// ═══════════════════════════════════════════════════════
+const BILLING_DEFAULT={freq:'monthly', day:31, last:true};   // same as calendar months
+let billing={...BILLING_DEFAULT};
+function sanitiseBilling(b){
+  b=(b&&typeof b==='object')?b:{};
+  const freq=['fortnightly','monthly','quarterly'].includes(b.freq)?b.freq:BILLING_DEFAULT.freq;
+  const max=freq==='fortnightly'?14:freq==='quarterly'?92:31;
+  const day=Math.max(1,Math.min(max,Math.round(+b.day)||1));
+  return {freq, day, last: freq!=='fortnightly' && !!b.last};
+}
+function isDefaultBilling(b){ return JSON.stringify(sanitiseBilling(b))===JSON.stringify(BILLING_DEFAULT); }
+function workdayOnOrBefore(str){ let d=dayStart(str); while(!isWorkday(d)) d=addDay(d,-1); return fmt(d); }
+function billingAnchor(){
+  const r=refMonday();
+  return r || mondayOf(projectStartStr || fmt(new Date()));
+}
+// Nominal (unadjusted) invoice dates, roughly covering [from, to]
+function nominalBillingDates(from, to){
+  const out=[], b=billing;
+  const f=dayStart(from), t=dayStart(to);
+  if(b.freq==='fortnightly'){
+    const a=billingAnchor();
+    let k=Math.floor(daysBetween(a,f)/14)-1;
+    for(let g=0; g<2000; g++,k++){
+      const d=addDay(a, k*14 + b.day-1);
+      out.push(fmt(d));
+      if(d>t) break;
+    }
+    return out;
+  }
+  const stepM = b.freq==='quarterly' ? 3 : 1;
+  let y=f.getFullYear(), m=f.getMonth();
+  if(stepM===3) m=m-(m%3);
+  m-=stepM;
+  for(let g=0; g<2000; g++){
+    const start=new Date(y,m,1), end=new Date(y,m+stepM,0);   // first and last day of the month/quarter
+    let d;
+    if(b.last) d=end;
+    else { d=addDay(start,b.day-1); if(d>end) d=end; }
+    out.push(fmt(d));
+    if(d>t) break;
+    m+=stepM;
+  }
+  return out;
+}
+let _billCache={sig:'',dates:[]};
+function billingDates(){
+  // Wide window: the whole chart and every actual, plus a year either side
+  let lo=projectStartStr||fmt(new Date()), hi=lo;
+  headings.concat(hiddenHeadings||[]).forEach(h=>{
+    (h.segments||[]).forEach(s=>{ if(s.start<lo) lo=s.start; if(s.end>hi) hi=s.end; });
+    (h.actuals||[]).forEach(a=>{ if(a.start<lo) lo=a.start; if(a.end>hi) hi=a.end; });
+  });
+  const from=fmt(addDay(lo,-400)), to=fmt(addDay(hi,400));
+  const sig=JSON.stringify([billing,from,to,workdayOverrides,billing.freq==='fortnightly'?fmt(billingAnchor()):'']);
+  if(_billCache.sig===sig) return _billCache.dates;
+  const dates=[];
+  nominalBillingDates(from,to).forEach(n=>{
+    const d=workdayOnOrBefore(n);
+    if(!dates.length || d>dates[dates.length-1]) dates.push(d);
+  });
+  _billCache={sig,dates};
+  return dates;
+}
+// First invoice date on or after the day = the period that day is billed in
+function billingKey(str){
+  const ds=billingDates();
+  let lo=0, hi=ds.length-1;
+  if(!ds.length || str>ds[hi]) return str;
+  while(lo<hi){ const mid=(lo+hi)>>1; if(ds[mid]<str) lo=mid+1; else hi=mid; }
+  return ds[lo];
+}
+function billingBounds(key){
+  const ds=billingDates();
+  const i=ds.indexOf(key);
+  const prev = i>0 ? ds[i-1] : fmt(addDay(key,-30));
+  return {start:fmt(addDay(prev,1)), end:key, next:fmt(addDay(key,1))};
+}
+function billingFreqName(b){ b=b||billing; return b.freq==='fortnightly'?'Fortnightly':b.freq==='quarterly'?'Quarterly':'Monthly'; }
+function ordinal(n){ const s=['th','st','nd','rd'], v=n%100; return n+(s[(v-20)%10]||s[v]||s[0]); }
+function billingDayText(b){
+  b=b||billing;
+  if(b.last) return b.freq==='quarterly'?'last day of the quarter':'last day of the month';
+  if(b.freq==='fortnightly'){ const wd=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'][(b.day-1)%7]; return `day ${b.day} (${wd} of week ${b.day<=7?1:2})`; }
+  return b.freq==='quarterly' ? `day ${b.day} of the quarter` : `the ${ordinal(b.day)}`;
+}
+function billingShort(){ return billing.freq==='fortnightly'?'Fortnightly':`${billingFreqName()}${billing.last?' (end)':' · '+(billing.freq==='monthly'?ordinal(billing.day):'day '+billing.day)}`; }
+
+// Period helpers. 'weekly' and 'billing' are the two views; 'monthly'
+// (calendar months) is still used for the month labels in the header.
+function periodKey(dateStr, mode){
+  if(mode==='billing') return billingKey(dateStr);
+  return mode==='monthly' ? dateStr.slice(0,7) : fmt(mondayOf(dateStr));
+}
+function periodBounds(key, mode){
+  if(mode==='billing') return billingBounds(key);
+  if(mode==='monthly'){
+    const [y,m]=key.split('-').map(Number);
+    const s=new Date(y,m-1,1), next=new Date(y,m,1);
+    return {start:fmt(s), end:fmt(addDay(next,-1)), next:fmt(next)};
+  }
+  return {start:key, end:fmt(addDay(key,6)), next:fmt(addDay(key,7))};
+}
+function nextKey(key, mode){ return periodKey(periodBounds(key,mode).next, mode); }
+function periodName(key, mode, long){
+  if(mode==='billing'){
+    const d=parseDate(key);
+    return long ? `Invoice ${d.toLocaleString('en-AU',{weekday:'short',day:'numeric',month:'short',year:'numeric'})}`
+                : `Invoice ${fmtDisplay(key)}`;
+  }
+  if(mode==='monthly'){
+    const [y,m]=key.split('-').map(Number);
+    return new Date(y,m-1,1).toLocaleString('en-AU',{month:long?'long':'short',year:'numeric'});
+  }
+  const n=weekNumberOf(key);
+  return (n!==null?`Week ${n}, `:'')+`w/c ${fmtDisplay(key)}`;
+}
+function unitName(mode){ return mode==='billing'?'billing period':mode==='monthly'?'month':'week'; }
+
+// "Today" for the to-date split. A hook lets tests pin the date.
+function todayStr(){ return window.__forecastToday || fmt(new Date()); }
+
+// ═══════════════════════════════════════════════════════
+//  ACTUAL INVOICES
+//  An actual is an amount entered on the Actual row for one week or month:
+//     {start, end, cents, mode}   start/end = that week or month
+//  It is a real invoice, so it is anchored to the CALENDAR, never to the
+//  programme: whatever happens to the dates in the Gantt it stays put.
+//  An invoice is ONE amount on ONE day: the last working day of the period
+//  it was entered for (actualLumpDate). So a billing-period invoice viewed
+//  by week sits whole in the LAST week of that billing period, and the
+//  other weeks of the period show $0 on the Invoiced row (their work is
+//  already invoiced). Several invoices entered by week stack up in the
+//  billing view ("INV01: $3,000" over "INV02: $2,000"). It can be in a
+//  period with no programmed work (a late invoice or an early payment).
+//  The Invoiced row is then: actuals where they exist, plus whatever is left
+//  of the total fee spread equally over every working day of the heading
+//  NOT inside a period that has an actual. Budget is equal per working day,
+//  so this is the same as splitting the remainder pro rata to the remaining
+//  budget values, and the Invoiced row always adds back to the total fee.
+// ═══════════════════════════════════════════════════════
+// The day an invoice sits on: the last calendar working day of its range
+// (the invoice date for a billing period, the Friday for a week), or the
+// range's last day if it has no working day at all.
+function actualLumpDate(a){
+  for(let d=dayStart(a.end), s=dayStart(a.start); d>=s; d=addDay(d,-1)){ const x=fmt(d); if(isWorkday(x)) return x; }
+  return a.end;
+}
+
+function allocateHeading(h){
+  const days=headingWorkdays(h);
+  const C=feeCents(h), N=days.length;
+  const budget=new Map();                 // date -> cents
+  days.forEach((d,i)=>budget.set(d, Math.floor((i+1)*C/N)-Math.floor(i*C/N)));
+
+  const inv=new Map();                    // date -> cents
+  const lockedBy=new Map();               // working day -> actual index (its period is invoiced)
+  const actAt=new Map();                  // date -> [actual index] (invoice dates)
+  const actShares=[];                     // per actual: Map {invoice date -> cents}
+  let actualSum=0;
+  (h.actuals||[]).forEach((a,ai)=>{
+    actualSum+=a.cents;
+    const sh=new Map([[actualLumpDate(a), a.cents]]);
+    actShares.push(sh);
+    sh.forEach((c,d)=>{
+      inv.set(d,(inv.get(d)||0)+c);
+      if(!actAt.has(d)) actAt.set(d,[]);
+      actAt.get(d).push(ai);
+    });
+    days.forEach(d=>{ if(d>=a.start&&d<=a.end&&!lockedBy.has(d)) lockedBy.set(d,ai); });
+  });
+  const free=days.filter(d=>!lockedBy.has(d));
+  const R=C-actualSum;                    // still to invoice, spread over free days
+  free.forEach((d,i)=>inv.set(d,(inv.get(d)||0)+Math.floor((i+1)*R/free.length)-Math.floor(i*R/free.length)));
+  // Nothing left to spread it over: the Invoiced row cannot hit the fee.
+  const imbalance = free.length ? 0 : R;
+  return {days, C, N, budget, inv, lockedBy, actAt, actShares, free, R, freeDays:free.length, imbalance, actualSum};
+}
+
+function buildForecast(mode){
+  const today=todayStr();
+  const budgetTotals=new Map(), invTotals=new Map(), actTotals=new Map(), remTotals=new Map();
+  let totalFee=0, unallocated=0;
+  const add=(m,k,c)=>m.set(k,(m.get(k)||0)+c);
+  const blank=()=>({cents:0,days:0,free:0,freeCents:0,locked:0,act:new Set()});
+  const rows=headings.map(h=>{
+    const a=allocateHeading(h);
+    totalFee+=a.C;
+    if(a.C && !a.N && !(h.actuals||[]).length) unallocated+=a.C;
+    const bp=new Map(), ip=new Map(), ap=new Map();
+    let budgetToDate=0, freeToDate=0, freeRemaining=0;
+    a.budget.forEach((c,d)=>{
+      const k=periodKey(d,mode);
+      const p=bp.get(k)||{cents:0,days:0}; p.cents+=c; p.days++; bp.set(k,p);
+      add(budgetTotals,k,c);
+      if(d<today) budgetToDate+=c;
+    });
+    const freeSet=new Set(a.free);
+    a.inv.forEach((c,d)=>{
+      const k=periodKey(d,mode);
+      const p=ip.get(k)||blank();
+      p.cents+=c;
+      if(a.actAt.has(d)) a.actAt.get(d).forEach(ai=>p.act.add(ai));
+      if(freeSet.has(d)){ p.free++; p.days++; p.freeCents+=c; add(remTotals,k,c); if(d<today) freeToDate+=c; else freeRemaining+=c; }
+      ip.set(k,p);
+      add(invTotals,k,c);
+    });
+    // Working days inside an invoiced period carry no forecast of their own
+    a.lockedBy.forEach((ai,d)=>{ const k=periodKey(d,mode); const p=ip.get(k)||blank(); p.locked++; p.days++; (p.lockBy=p.lockBy||new Set()).add(ai); ip.set(k,p); });
+    a.actShares.forEach((sh,ai)=>sh.forEach((c,d)=>{
+      const k=periodKey(d,mode);
+      const p=ap.get(k)||blank(); p.cents+=c; p.act.add(ai); ap.set(k,p);
+      add(actTotals,k,c);
+    }));
+    return {h, a, days:a.N, cents:a.C, periods:bp, inv:ip, act:ap,
+            budgetToDate, budgetRemaining:a.C-budgetToDate,
+            // Actuals are real invoices, so they always count as to date
+            invToDate:a.actualSum+freeToDate, invRemaining:freeRemaining,
+            actToDate:a.actualSum, actRemaining:a.C-a.actualSum,
+            // Remaining invoiced: what is still to be invoiced (fee less actuals)
+            remTotal:a.C-a.actualSum};
+  });
+  const sum=(f)=>rows.reduce((s,r)=>s+f(r),0);
+  return {mode, rows, totals:budgetTotals, invTotals, actTotals, remTotals, totalFee, unallocated,
+    remTotal:sum(r=>r.remTotal),
+    budgetToDate:sum(r=>r.budgetToDate), budgetRemaining:sum(r=>r.budgetRemaining),
+    invToDate:sum(r=>r.invToDate), invRemaining:sum(r=>r.invRemaining),
+    actToDate:sum(r=>r.actToDate), actRemaining:sum(r=>r.actRemaining),
+    imbalanced:rows.filter(r=>r.a.imbalance)};
+}
+
+// How a period on the Invoiced or Actual row relates to the actuals in it,
+// for this view:
+//   'exact'   the period is exactly one actual entered for this period
+//   'partial' it contains actuals (or invoiced days) but is not exactly one
+//             entered here, e.g. a week inside a month invoiced monthly
+//   ''        all forecast
+function overrideState(h, p, key, mode){
+  if(!p || (!p.act.size && !p.locked)) return '';
+  if(p.act.size===1 && !p.free){
+    const o=h.actuals[[...p.act][0]], b=periodBounds(key,mode);
+    if(o && o.start===b.start && o.end===b.end) return 'exact';
+  }
+  return 'partial';
+}
+
+// ── Text measuring, so the weekly/monthly decision is made on real widths
+const LABEL_FONT_PX=9, LABEL_WEIGHT=600;
+const TOTAL_FONT_PX=10, TOTAL_WEIGHT=700;
+const LABEL_PAD=8;   // breathing room inside a period, total
+let _measureCtx=null;
+function textWidth(str, px, weight){
+  if(!_measureCtx) _measureCtx=document.createElement('canvas').getContext('2d');
+  const fam=getComputedStyle(document.documentElement).getPropertyValue('--font-mono').trim()||'monospace';
+  _measureCtx.font=`${weight} ${px}px ${fam}`;
+  return Math.ceil(_measureCtx.measureText(str).width);
+}
+
+// Weekly figures must ALL fit inside a week (7 x px/day): Budget and
+// Calculated invoices labels and all three totals rows. (Actual invoice
+// boxes span their own period, so they do not depend on the view.) If any
+// one does not, the chart shows months.
+function resolveBreakdown(){
+  const weekly=buildForecast('weekly');
+  let maxW=0;
+  const fit=(c,px,w)=>{ if(c) maxW=Math.max(maxW,textWidth(money0(c),px,w)); };
+  weekly.rows.forEach(r=>{
+    r.periods.forEach(p=>fit(p.cents,LABEL_FONT_PX,LABEL_WEIGHT));
+    r.inv.forEach(p=>fit(p.freeCents,LABEL_FONT_PX,LABEL_WEIGHT));
+  });
+  [weekly.totals,weekly.remTotals,weekly.actTotals].forEach(m=>m.forEach(c=>fit(c,TOTAL_FONT_PX,TOTAL_WEIGHT)));
+  weeklyMinZoom = maxW ? Math.ceil((maxW+LABEL_PAD)/7) : 0;
+  const fits = (maxW+LABEL_PAD) <= 7*pxPerDay;
+  if(breakdownPref==='billing'){ breakdownForced=false; breakdownView='billing'; return buildForecast('billing'); }
+  breakdownForced=!fits;
+  breakdownView=fits?'weekly':'billing';
+  return fits ? weekly : buildForecast('billing');
+}
+
+// In the billing view a figure that will not fit is shortened ($12.3k), and
+// left off if even that will not fit. Hover still gives the exact value.
+function fitText(cents, widthPx, px, weight){
+  const full=money0(cents);
+  if(textWidth(full,px,weight)+LABEL_PAD<=widthPx) return full;
+  const short=moneyCompact(cents);
+  if(textWidth(short,px,weight)+4<=widthPx) return short;
+  return '';
+}
+
+// ═══════════════════════════════════════════════════════
+//  GANTT RANGE
+// ═══════════════════════════════════════════════════════
+function getGanttRange() {
+  let minD=null, maxD=null;
+  const take=(a,b)=>{ a=parseDate(a); b=parseDate(b); if(a&&(!minD||a<minD)) minD=a; if(b&&(!maxD||b>maxD)) maxD=b; };
+  if (projectStartStr) minD = parseDate(projectStartStr);
+  headings.forEach(h => {
+    (h.segments||[]).forEach(s=>take(s.start,s.end));
+    (h.actuals||[]).forEach(a=>take(a.start,a.end));   // a late invoice stays on the chart
+  });
+  if (!minD) minD=new Date();
+  minD=dayStart(minD);
+  maxD = maxD ? dayStart(maxD) : addDay(minD, 90);
+  minD=addDay(minD,-14);
+  maxD=addDay(maxD,14);
+  while(minD.getDay()!==1) minD=addDay(minD,-1);
+  return {minD,maxD};
+}
+
+let ganttMinD = null;
+let ganttTotalPx = 0;
+function xForDate(str) {
+  if (!ganttMinD||!str) return 0;
+  return Math.round(daysBetween(ganttMinD,str)*pxPerDay);
+}
+function dateAtX(x){ return fmt(addDay(ganttMinD, Math.floor(x/pxPerDay))); }
+
+// Week counter: week 1 is the week containing the project start (or the
+// earliest heading start). No week 0, weeks before count -1, -2 ...
+function refMonday(){
+  let ref=projectStartStr;
+  if(!ref) headings.forEach(h=>{ const s=headingSpan(h).start; if(s&&(!ref||s<ref)) ref=s; });
+  return ref ? mondayOf(ref) : null;
+}
+function weekNumberOf(mondayStr){
+  const r=refMonday(); if(!r) return null;
+  const off=Math.round(daysBetween(r,mondayStr)/7);
+  return off>=0 ? off+1 : off;
+}
+
+// Every heading draws four rows: the heading, Budget, Remaining invoiced, Actual invoiced.
+const SUB_ROWS = ['b','i','a'];
+const SUB_NAMES = {b:'Budget', i:'Remaining invoiced', a:'Actual invoiced'};
+function totalRowCount(){ return headings.length*(1+SUB_ROWS.length); }
+// The Actual row grows by one lane for each invoice that overlaps another
+// in time, so concurrent invoices stack instead of covering each other.
+// Lanes depend only on the invoices' dates, not on the view.
+const ACT_LANE_H=15, ACT_LANE_GAP=3;
+// The Budget row is taller: its fee cell holds two figures, to date over remaining.
+const BUDGET_ROW_H=37;
+function actualLanes(h){
+  const lane={}, ends=[];
+  (h.actuals||[]).map((a,i)=>({a,i}))
+    .sort((x,y)=>x.a.start<y.a.start?-1:x.a.start>y.a.start?1:(x.a.end<y.a.end?-1:1))
+    .forEach(({a,i})=>{
+      let l=ends.findIndex(e=>e<a.start);
+      if(l<0){ l=ends.length; ends.push(a.end); } else ends[l]=a.end;
+      lane[i]=l;
+    });
+  return {lane, count:Math.max(1,ends.length)};
+}
+function actLaneCount(r){ return r ? actualLanes(r.h).count : 1; }
+function actRowHeight(r){ const n=actLaneCount(r); return n<=1 ? ROW_H : 14+n*ACT_LANE_H+(n-1)*ACT_LANE_GAP; }
+function rowHeight(r,kind){ return kind==='a' ? actRowHeight(r) : kind==='b' ? BUDGET_ROW_H : ROW_H; }
+function contentHeight(){
+  const fc=currentForecast;
+  if(!fc || fc.rows.length!==headings.length) return headings.length*(3*ROW_H+BUDGET_ROW_H);
+  return fc.rows.reduce((s,r)=>s+2*ROW_H+BUDGET_ROW_H+actRowHeight(r),0);
+}
+function rowsHeight(){ return Math.max(contentHeight(),200); }
+
+// ═══════════════════════════════════════════════════════
+//  RENDER LEFT
+//  Columns: x | handle | colour | heading (name, then From..to and working
+//  days on the rows beneath) | row title | total fee | comments
+// ═══════════════════════════════════════════════════════
+let currentForecast = null;   // last build, shared by left panel, chart, CSV and menus
+
+// Two figures stacked in one cell, each with a small caption
+function splitCell(a, b, tipA, tipB, capA='to date', capB='remaining'){
+  const neg=v=>v<0?' neg':'';
+  return `<div class="split"><div class="fig fig-a${neg(a)}" title="${escHtml(tipA)}"><i>${capA}</i>${money2(a)}</div>`
+       + `<div class="fig fig-b${neg(b)}" title="${escHtml(tipB)}"><i>${capB}</i>${money2(b)}</div></div>`;
+}
+function oneFig(v, tip){ return `<div class="one-fig${v<0?' neg':''}" title="${escHtml(tip)}">${money2(v)}</div>`; }
+
+function renderLeft() {
+  const body = document.getElementById('left-body');
+  const scrollTop = body.scrollTop;
+  body.innerHTML='';
+  const fc = currentForecast || buildForecast(breakdownView);
+  const todayTxt = fmtDisplay(todayStr());
+  headings.forEach((h,i)=>{
+    const r=fc.rows[i];
+    const {start,end}=headingSpan(h);
+    const nDays=r.days, C=r.cents;
+    const unalloc = C && !nDays && !(h.actuals||[]).length;
+
+    // ── HEADING ROW ──
+    const row=document.createElement('div');
+    row.className='heading-row';
+    row.dataset.idx=i; row.dataset.rk=i+'h';
+    row.style.background=h.color+'22';
+    row.style.color=h.color;
+    row.innerHTML=`
+      <div class="task-cell" style="padding:0">
+        <button class="heading-del-btn" tabindex="-1" onclick="deleteHeading(${i})" title="Remove from the forecast (the programme keeps it; Show hidden in the status bar brings it back)" style="color:${h.color}">×</button>
+      </div>
+      <div class="task-cell row-handle" title="Drag to reorder" onmousedown="startRowDrag(event,${i})">⠿</div>
+      <div class="task-cell" style="justify-content:center">
+        <button class="heading-color-btn" tabindex="-1" style="background:${h.color}" title="Click to change colour (forecast only; the Gantt colour is not changed)" onclick="openColorPicker(event,${i})"></button>
+      </div>
+      <div class="task-cell" style="overflow:hidden">
+        <div class="heading-name" title="${escHtml(h.name)}">${escHtml(h.name)||'<span style="opacity:.5">(unnamed heading)</span>'}</div>
+      </div>
+      <div class="task-cell"></div>
+      <div class="task-cell fee-cell">
+        <input class="fee-input${unalloc?' unallocated':''}" type="text" inputmode="decimal" autocomplete="off" spellcheck="false"
+          data-idx="${i}" value="${C?money2(C):''}" placeholder="$0.00" style="color:${h.color}"
+          title="${unalloc?'This heading has no working days in the programme, so its fee cannot be spread.':'Total fee for this stage. Accepts 12345.50, $12,345.50, 120k or 1.2m. Enter to apply, Escape to cancel.'}"
+          onfocus="feeFocus(this)" onblur="feeBlur(event,this)" onkeydown="feeKey(event,this)">
+      </div>
+      <div class="task-cell comments-cell"><div class="comments-text" title="${escHtml(h.comments)}">${escHtml(h.comments)}</div></div>
+    `;
+    body.appendChild(row);
+
+    // ── BUDGET / REMAINING INVOICED / ACTUAL INVOICED ── (formatted like Gantt subtasks)
+    // Under the heading name: the dates on the first row, working days on the second.
+    SUB_ROWS.forEach(kind=>{
+      const sr=document.createElement('div');
+      sr.className='task-row'+(kind==='b'?' tall':'');
+      sr.dataset.idx=i; sr.dataset.rk=i+kind;
+      if(kind==='a' && actRowHeight(r)!==ROW_H) sr.style.height=actRowHeight(r)+'px';
+      let info='', badge='', fee='';
+      const nAct=(h.actuals||[]).length;
+      const hasFigures = C || nAct;
+      if(kind==='b'){
+        info = start ? `From ${fmtDisplay(start)} to ${fmtDisplay(end)}` : 'No dated work in the programme';
+        if(hasFigures) fee=splitCell(r.budgetToDate, r.budgetRemaining,
+          `Budget to date: the share of the total fee for working days before today (${todayTxt})`,
+          `Budget remaining: the share for working days from today on`);
+      } else if(kind==='i'){
+        info = nDays ? `${nDays} working day${nDays!==1?'s':''}` : '';
+        if(r.a.imbalance) badge+=`<span class="sub-badge warn" title="Every working day is in an invoiced period, so the rest of the fee has nowhere to go">⚠</span>`;
+        else if(r.a.R<0) badge+=`<span class="sub-badge warn" title="Actual invoices add up to more than the total fee">⚠</span>`;
+        if(hasFigures) fee=oneFig(r.remTotal, 'Still to be invoiced: total fee less actual invoices');
+      } else {
+        info = nAct ? '' : '<span class="sub-badge muted">click the chart to enter an invoice</span>';
+        if(hasFigures) fee=oneFig(r.actToDate, 'Actually invoiced so far: the total of all actual invoices entered');
+      }
+      sr.innerHTML=`
+        <div class="heading-stripe" style="background:${h.color}"></div>
+        <div class="task-cell"></div><div class="task-cell"></div><div class="task-cell"></div>
+        <div class="task-cell" style="overflow:hidden"><div class="sub-info">${info}</div></div>
+        <div class="task-cell" style="overflow:hidden"><div class="sub-title">${SUB_NAMES[kind]}${badge}</div></div>
+        <div class="task-cell fee-cell">${fee}</div>
+        <div class="task-cell"></div>`;
+      body.appendChild(sr);
+    });
+  });
+  body.scrollTop = scrollTop;
+  syncScrollSetup();
+}
+
+function renderLeftTotals(fc){
+  const modeTxt = fc.mode==='billing' ? `by billing period${breakdownForced?' (auto)':''}` : 'by week';
+  const blank='<div class="lt-cell"></div><div class="lt-cell"></div><div class="lt-cell"></div>';
+  const strip=(id,nameHtml,title,feeHtml)=>{
+    document.getElementById(id).innerHTML=`${blank}
+      <div class="lt-cell">${nameHtml}</div>
+      <div class="lt-cell"><span class="lt-title">${title}</span></div>
+      <div class="lt-cell lt-split">${feeHtml}</div>
+      <div class="lt-cell"></div>`;
+  };
+  strip('left-totals-b',
+    `<span class="lt-label">Total fee</span><span class="lt-mode" style="font-family:var(--font-mono)">${money2(fc.totalFee)}</span><span class="lt-mode">· ${modeTxt}</span>`
+      +(fc.unallocated?`<span class="lt-warn" style="margin-left:8px" title="Fees on headings with no working days are not in the chart">⚠ ${money2(fc.unallocated)} not spread</span>`:''),
+    'Budget', splitCell(fc.budgetToDate,fc.budgetRemaining,'Budget to date, all headings','Budget remaining, all headings'));
+  const bad=fc.imbalanced.length;
+  strip('left-totals-i',
+    bad?`<span class="lt-warn">⚠ ${bad} heading${bad!==1?'s':''} cannot balance to the fee</span>`:'',
+    'Remaining invoiced', oneFig(fc.remTotal,'Still to be invoiced, all headings'));
+  strip('left-totals-a','','Actual invoiced', oneFig(fc.actToDate,'Actually invoiced, all headings'));
+}
+
+function overallSpan(){
+  let s='',e='';
+  headings.forEach(h=>{ const sp=headingSpan(h); if(sp.start&&(!s||sp.start<s)) s=sp.start; if(sp.end&&(!e||sp.end>e)) e=sp.end; });
+  return {start:s,end:e};
+}
+
+// ═══════════════════════════════════════════════════════
+//  RENDER CHART
+// ═══════════════════════════════════════════════════════
+function renderGantt() {
+  hideTooltip();   // the element it describes is about to be replaced
+  const {minD,maxD} = getGanttRange();
+  ganttMinD = minD;
+  const totalDays = daysBetween(minD,maxD)+1;
+  const totalPx = totalDays*pxPerDay;
+  ganttTotalPx = totalPx;
+
+  currentForecast = resolveBreakdown();
+  renderGanttHeader(minD,maxD,totalPx,currentForecast);
+  renderNonWorkBands(minD,maxD,totalPx);
+  renderPeriodLines(minD,maxD,totalPx,currentForecast.mode);
+  renderGanttBars(totalPx,currentForecast);
+  renderTodayLine(totalPx);
+  renderLeftTotals(currentForecast);
+  updateBreakdownUI();
+  updateStatus(currentForecast);
+  document.getElementById('empty-state').style.display = (headings.length||hiddenHeadings.length) ? 'none' : 'flex';
+}
+
+// Every period (week or calendar month) that touches the chart range,
+// clipped to it.
+function periodsInRange(minD,maxD,mode,totalPx){
+  const out=[];
+  let key = periodKey(fmt(minD),mode);
+  const last = periodKey(fmt(maxD),mode);
+  for(let guard=0; guard<2000; guard++){
+    const b=periodBounds(key,mode);
+    const x0=Math.max(0,xForDate(b.start)), x1=Math.min(totalPx,xForDate(b.next));
+    if(x1>x0) out.push({key, ...b, x0, x1});
+    if(key===last) break;
+    key = nextKey(key,mode);
+  }
+  return out;
+}
+
+function renderGanttHeader(minD,maxD,totalPx,fc) {
+  const wrap=document.getElementById('gantt-header-inner');
+  wrap.innerHTML='';
+  wrap.style.width=(totalPx+200)+'px';
+  const gridOverlay=document.getElementById('gantt-grid-overlay');
+  gridOverlay.style.width=(totalPx+200)+'px';
+  gridOverlay.style.height=rowsHeight()+'px';
+  if(pxPerDay>=4){
+    gridOverlay.style.backgroundImage=`repeating-linear-gradient(90deg,transparent,transparent ${pxPerDay*7-1}px,var(--border) ${pxPerDay*7}px)`;
+    gridOverlay.style.backgroundSize=`${pxPerDay*7}px 100%`;
+  } else gridOverlay.style.backgroundImage='none';
+
+  const today=dayStart(new Date());
+  const todayS=fmt(today);
+
+  // Month row: true calendar months
+  const mr=document.createElement('div'); mr.className='gantt-month-row';
+  periodsInRange(minD,maxD,'monthly',totalPx).forEach(p=>{
+    const el=document.createElement('div'); el.className='gantt-month-label';
+    el.style.left=p.x0+'px'; el.style.width=(p.x1-p.x0)+'px';
+    const [y,m]=p.key.split('-').map(Number);
+    const mStart=new Date(y,m-1,1), mEnd=new Date(y,m,0);
+    if(p.x1-p.x0>=34) el.textContent=mStart.toLocaleString('default',{month:'short',year:'2-digit'});
+    attachTip(el,()=>`<strong>${mStart.toLocaleString('default',{month:'long',year:'numeric'})}</strong>`
+      +`<br>${fmtDisplay(fmt(mStart))} to ${fmtDisplay(fmt(mEnd))}`
+      +`<br>${workdaysInRange(mStart,mEnd)} working days`);
+    mr.appendChild(el);
+  });
+  wrap.appendChild(mr);
+
+  // Week counter row
+  const wr=document.createElement('div'); wr.className='gantt-week-row';
+  for(let w=new Date(minD); w<=maxD; w=addDay(w,7)){
+    const cell=document.createElement('div'); cell.className='gantt-week-cell';
+    cell.style.width=(pxPerDay*7)+'px';
+    if(w<=today&&today<addDay(w,7)) cell.classList.add('is-current');
+    const num=weekNumberOf(fmt(w));
+    if(num!==null){
+      if(pxPerDay>=3) cell.textContent=num;
+      const wkStart=new Date(w), wkEnd=addDay(w,6);
+      attachTip(cell,()=>`<strong>Week ${num}</strong><br>${fmtDisplay(fmt(wkStart))} to ${fmtDisplay(fmt(wkEnd))}<br>${workdaysInRange(wkStart,wkEnd)} working days`);
+    }
+    wr.appendChild(cell);
+  }
+  wrap.appendChild(wr);
+
+  // Day-of-week row (read-only here: the programme owns the calendar)
+  const dr=document.createElement('div'); dr.className='gantt-day-row';
+  if(pxPerDay>=DAY_ROW_MIN_ZOOM){
+    const LETTERS=['S','M','T','W','T','F','S'];
+    for(let d=dayStart(minD); d<=maxD; d=addDay(d)){
+      const str=fmt(d);
+      const cell=document.createElement('div'); cell.className='gantt-day-cell';
+      cell.style.left=xForDate(str)+'px';
+      cell.style.width=(xForDate(fmt(addDay(d)))-xForDate(str))+'px';
+      cell.textContent=LETTERS[d.getDay()];
+      if(!isWorkday(str)) cell.classList.add('is-nonwork');
+      if(str===todayS) cell.classList.add('is-today');
+      if(Object.prototype.hasOwnProperty.call(workdayOverrides,str)) cell.classList.add('is-custom');
+      const dObj=new Date(str+'T00:00:00');
+      attachTip(cell,()=>{
+        const reason=nonWorkReason(str);
+        const state=isWorkday(str)?'Working day':'Non-working day';
+        return `<strong>${dObj.toLocaleString('default',{weekday:'long'})}</strong><br>${fmtDisplay(str)}`
+          +`<br>${state}${reason?` <span style="opacity:.75">(${reason})</span>`:''}`
+          +`<br><span style="opacity:.7;font-style:italic">Calendar is set in the Gantt programme</span>`;
+      });
+      dr.appendChild(cell);
+    }
+  }
+  dr.style.width=(totalPx+200)+'px';
+  if(showNonWorkBands){
+    nonWorkRuns(minD,maxD).forEach(r=>{
+      const band=document.createElement('div'); band.className='nonwork-band';
+      band.style.left=r.x+'px'; band.style.width=r.w+'px';
+      dr.appendChild(band);
+    });
+  }
+  wrap.appendChild(dr);
+
+  // Three totals rows: Budget, Invoiced, Actual. Same order as the sub-rows.
+  const curKey=periodKey(todayS,fc.mode);
+  const periods=periodsInRange(minD,maxD,fc.mode,totalPx);
+  [['b',fc.totals],['i',fc.remTotals],['a',fc.actTotals]].forEach(([kind,map])=>{
+    const tr=document.createElement('div'); tr.className='gantt-totals-row'+(kind==='b'?' tall':'');
+    tr.dataset.kind=kind;
+    tr.style.width=(totalPx+200)+'px';
+    periods.forEach(p=>{
+      const cents=map.get(p.key)||0;
+      const cell=document.createElement('div'); cell.className='total-cell';
+      cell.dataset.key=p.key;
+      cell.style.left=p.x0+'px'; cell.style.width=(p.x1-p.x0)+'px';
+      if(p.key===curKey) cell.classList.add('is-current');
+      if(!cents) cell.classList.add('is-zero');
+      else cell.textContent = fc.mode==='weekly' ? money0(cents) : fitText(cents,p.x1-p.x0,TOTAL_FONT_PX,TOTAL_WEIGHT);
+      attachTip(cell,()=>totalTip(fc,p,cents,kind));
+      tr.appendChild(cell);
+    });
+    wrap.appendChild(tr);
+  });
+}
+
+function rowMap(r,kind){ return kind==='b'?r.periods:kind==='i'?r.inv:r.act; }
+
+function totalTip(fc,p,cents,kind){
+  let html=`<strong>${SUB_NAMES[kind]}, ${escHtml(periodName(p.key,fc.mode,true))}</strong>`
+    +`<br>${fmtDisplay(p.start)} to ${fmtDisplay(p.end)}`
+    +`<br>${workdaysInRange(parseDate(p.start),parseDate(p.end))} working days`;
+  if(!cents) return html+'<br><span style="opacity:.7">Nothing in this period</span>';
+  html+=`<div style="margin-top:4px;border-top:1px solid #334155;padding-top:4px">`;
+  fc.rows.forEach(r=>{
+    const pp=rowMap(r,kind).get(p.key); const v=pp?(kind==='i'?pp.freeCents:pp.cents):0; if(!v) return;
+    html+=`<div class="tt-row"><span><span class="tt-dot" style="background:${r.h.color}"></span>${escHtml(r.h.name)}</span><span>${money2(v)}</span></div>`;
+  });
+  html+=`<div class="tt-row" style="font-weight:700;margin-top:2px"><span>Total</span><span>${money2(cents)}</span></div></div>`;
+  if(kind==='i') html+=`<div style="opacity:.6;font-size:10px">Still to be invoiced in this period, not counting actual invoices</div>`;
+  return html;
+}
+
+function attachTip(el, htmlFn){
+  el.addEventListener('mouseenter', e=>{
+    const tip=document.getElementById('tooltip');
+    tip.innerHTML=htmlFn(); tip.style.display='block'; moveTooltip(e);
+  });
+  el.addEventListener('mousemove', moveTooltip);
+  el.addEventListener('mouseleave', hideTooltip);
+}
+function moveTooltip(e){
+  const tip=document.getElementById('tooltip');
+  let x=e.clientX+14, y=e.clientY+14;
+  const r=tip.getBoundingClientRect();
+  if(x+r.width>window.innerWidth-8) x=e.clientX-r.width-14;
+  if(y+r.height>window.innerHeight-8) y=e.clientY-r.height-14;
+  tip.style.left=x+'px'; tip.style.top=y+'px';
+}
+function hideTooltip(){document.getElementById('tooltip').style.display='none';}
+
+function renderNonWorkBands(minD,maxD,totalPx){
+  const host=document.getElementById('nonwork-bands');
+  host.innerHTML='';
+  if(!showNonWorkBands) return;
+  host.style.width=(totalPx+200)+'px';
+  host.style.height=rowsHeight()+'px';
+  nonWorkRuns(minD,maxD).forEach(r=>{
+    const band=document.createElement('div'); band.className='nonwork-band';
+    band.style.left=r.x+'px'; band.style.width=r.w+'px';
+    host.appendChild(band);
+  });
+}
+
+// In the billing view each invoice date is marked down the chart (the line
+// sits at the end of the invoice day), so each figure sits visibly inside
+// the period it is invoiced for.
+function renderPeriodLines(minD,maxD,totalPx,mode){
+  const host=document.getElementById('period-lines');
+  host.innerHTML='';
+  host.style.width=(totalPx+200)+'px';
+  host.style.height=rowsHeight()+'px';
+  if(mode!=='billing') return;
+  periodsInRange(minD,maxD,'billing',totalPx).forEach(p=>{
+    if(p.x1>=totalPx) return;
+    const l=document.createElement('div'); l.className='month-line billing-line';
+    l.title=`Invoice ${fmtDisplay(p.key)}`;
+    l.style.left=(p.x1-1)+'px'; l.style.height=rowsHeight()+'px';
+    host.appendChild(l);
+  });
+}
+
+function renderGanttBars(totalPx,fc) {
+  const wrap=document.getElementById('gantt-canvas-wrap');
+  const ganttRows=document.getElementById('gantt-rows');
+  ganttRows.innerHTML='';
+  wrap.style.width=totalPx+'px';
+  wrap.style.minHeight=contentHeight()+'px';
+  const mode=fc.mode;
+
+  fc.rows.forEach((r,i)=>{
+    const h=r.h;
+    const segX=(h.segments||[]).map(seg=>{
+      const x=xForDate(seg.start), x2=xForDate(seg.end)+pxPerDay;
+      return {seg, x0:x, x1:x+Math.max(8,x2-x)};
+    });
+    const lastX2=segX.reduce((m,s)=>Math.max(m,s.x1),0);
+
+    // ── HEADING ROW: light expanded-heading bars, name label, no figures
+    const row=document.createElement('div');
+    row.className='gantt-heading-row';
+    row.style.background=lightenHex(h.color,0.078);
+    row.dataset.idx=i; row.dataset.rk=i+'h';
+    segX.forEach(s=>{
+      const bar=document.createElement('div');
+      bar.className='gantt-heading-bar';
+      bar.style.left=s.x0+'px'; bar.style.width=(s.x1-s.x0)+'px';
+      bar.style.background=lightenHex(h.color,0.4);
+      bar.style.opacity='.5';
+      attachTip(bar,()=>barTip(r));
+      row.appendChild(bar);
+    });
+    if(h.name && segX.length){
+      const lbl=document.createElement('div');
+      lbl.className='bar-ext-label';
+      lbl.textContent=h.name;
+      lbl.style.left=(lastX2+10)+'px';
+      lbl.style.color=h.color;
+      row.appendChild(lbl);
+    }
+    ganttRows.appendChild(row);
+
+    // ── BUDGET and INVOICED: full colour subtask bars carrying the figures.
+    // ── ACTUAL: no bars (an invoice is not time); only what has been entered.
+    SUB_ROWS.forEach(kind=>{
+      const sr=document.createElement('div');
+      sr.className='gantt-row'+(kind==='b'?' tall':kind==='i'?' inv-row':' act-row');
+      sr.dataset.idx=i; sr.dataset.rk=i+kind;
+      if(kind==='a' && actRowHeight(r)!==ROW_H) sr.style.height=actRowHeight(r)+'px';
+      if(kind!=='a'){
+        const ink=textOn(h.color);
+        const tickCol = ink==='#ffffff' ? 'rgba(255,255,255,.4)' : 'rgba(0,0,0,.18)';
+        segX.forEach(s=>{
+          const bar=document.createElement('div');
+          bar.className='gantt-bar';
+          bar.style.left=s.x0+'px'; bar.style.width=(s.x1-s.x0)+'px';
+          bar.style.background=h.color;
+          addPeriodTicks(bar, s, mode, tickCol);
+          attachTip(bar,()=>barTip(r));
+          sr.appendChild(bar);
+        });
+      } else {
+        attachActualHover(sr);
+        sr.addEventListener('click', e=>{ if(e.button===0) openActualEntryAt(e, i, sr); });
+      }
+      drawPeriodLabels(sr, r, kind==='a'?[]:segX, rowMap(r,kind), mode, kind);
+      sr.addEventListener('contextmenu', e=>openRowMenu(e, i, kind, sr));
+      ganttRows.appendChild(sr);
+    });
+  });
+}
+
+// Period dividers that fall strictly inside a segment
+function addPeriodTicks(bar, s, mode, col){
+  const w=s.x1-s.x0;
+  let k=periodKey(s.seg.start,mode);
+  for(let guard=0; guard<1000; guard++){
+    const b=periodBounds(k,mode);
+    if(b.next>s.seg.end) break;
+    const tx=xForDate(b.next)-s.x0;
+    if(tx>0 && tx<w){
+      const t=document.createElement('div'); t.className='period-tick';
+      t.style.left=(tx-0.5)+'px'; t.style.background=col;
+      bar.appendChild(t);
+    }
+    k = nextKey(k,mode);
+  }
+}
+
+// A dashed box follows the mouse on the Actual row, showing which week or
+// month a click will enter an invoice into.
+function attachActualHover(sr){
+  let box=null;
+  sr.addEventListener('mousemove', e=>{
+    if(e.target.classList.contains('fee-label')){ if(box) box.style.display='none'; return; }
+    const x=e.clientX-sr.getBoundingClientRect().left;
+    const key=periodKey(dateAtX(x),breakdownView), b=periodBounds(key,breakdownView);
+    const x0=Math.max(0,xForDate(b.start)), x1=Math.min(ganttTotalPx,xForDate(b.next));
+    if(!box){ box=document.createElement('div'); box.className='act-hover'; box.textContent='+'; sr.appendChild(box); }
+    box.style.display='flex';
+    box.style.left=(x0+1)+'px'; box.style.width=Math.max(4,x1-x0-2)+'px';
+  });
+  sr.addEventListener('mouseleave', ()=>{ if(box) box.style.display='none'; });
+}
+
+// One figure per period. Centred on the widest piece of bar inside the
+// period (measured per piece, never across the gap between two segments).
+// If it does not fit there it becomes a small tag in the heading colour.
+// Actual invoices are always a white tag with a coloured border, on the
+// Actual row and wherever they feed the Invoiced row.
+function drawPeriodLabels(row, r, segX, map, mode, kind){
+  if(kind==='a') return drawActualTags(row, r, map, mode);
+  const h=r.h, ink=textOn(h.color);
+  map.forEach((p,key)=>{
+    // Remaining invoiced shows only what is still to be invoiced: a period
+    // covered by an invoice in full is blank; one covered in part shows what
+    // is left of it. Actual amounts live on the Actual invoiced row only.
+    const val = kind==='i' ? p.freeCents : p.cents;
+    if(!val) return;
+    const b=periodBounds(key,mode);
+    const px0=xForDate(b.start), px1=xForDate(b.next);
+    let cx0=0, cx1=0;
+    segX.forEach(s=>{ const a=Math.max(px0,s.x0), z=Math.min(px1,s.x1); if(z-a>cx1-cx0){ cx0=a; cx1=z; } });
+    const hasPiece=cx1>cx0;
+    if(!hasPiece){ cx0=px0; cx1=px1; }
+    // Budget and Invoiced read the same whether a figure is forecast or
+    // comes from an actual invoice: on the bar, or a tag in heading colour.
+    const txt = mode==='weekly' ? money0(val) : fitText(val,px1-px0,LABEL_FONT_PX,LABEL_WEIGHT);
+    if(!txt) return;
+    const tw=textWidth(txt,LABEL_FONT_PX,LABEL_WEIGHT);
+    const lbl=document.createElement('div');
+    lbl.className='fee-label';
+    lbl.textContent=txt;
+    lbl.dataset.key=key;
+    lbl.style.color=ink;
+    if(hasPiece && tw+6<=cx1-cx0){
+      lbl.style.left=cx0+'px'; lbl.style.width=(cx1-cx0)+'px';
+    } else {
+      const w=Math.min(tw+8, px1-px0-2);
+      let left=(cx0+cx1)/2-w/2;
+      left=Math.max(px0+1,Math.min(px1-1-w,left));
+      lbl.classList.add('pill');
+      lbl.style.left=Math.round(left)+'px'; lbl.style.width=w+'px';
+      lbl.style.background=h.color;
+    }
+    attachTip(lbl,()=>labelTip(r,key,mode,kind,p));
+    row.appendChild(lbl);
+  });
+}
+
+// Actual row: each invoice is a white box spanning the WHOLE period it
+// relates to (its week, billing period, month or quarter), with its label and
+// amount inside. Boxes that overlap in time go on separate lanes and the row
+// grows to fit, so concurrent invoices never sit on top of each other.
+// The money still counts on the invoice date (the last working day of the
+// period), which is where the totals and Calculated invoices place it.
+function drawActualTags(row, r, map, mode){
+  const h=r.h, {lane}=actualLanes(h);
+  const n=actLaneCount(r);
+  const top0=Math.round((actRowHeight(r)-(n*ACT_LANE_H+(n-1)*ACT_LANE_GAP))/2);
+  (h.actuals||[]).forEach((a,ai)=>{
+    let x0=xForDate(a.start), x1=xForDate(fmt(addDay(a.end)));
+    x0=Math.max(0,x0); x1=Math.min(ganttTotalPx,x1);
+    if(x1<=x0) return;
+    const w=Math.max(6,x1-x0-2);
+    const box=document.createElement('div');
+    box.className='fee-label pill ovr inv-box';
+    box.dataset.key=periodKey(actualLumpDate(a),mode);   // the period it counts in, in this view
+    box.dataset.ai=ai;
+    box.style.left=(x0+1)+'px'; box.style.width=w+'px';
+    box.style.top=(top0+lane[ai]*(ACT_LANE_H+ACT_LANE_GAP))+'px';
+    box.style.border=`1px solid ${h.color}`;
+    box.style.color=a.cents<0?'#dc2626':h.color;
+    // Label and amount if they fit, then amount, then shortened, then nothing
+    const room=w-5, W=700, full=(a.label?`${a.label}: `:'')+money0(a.cents);
+    // Try the label at normal size, then a size smaller, before dropping it
+    const opts=[[full,9],[full,8],[money0(a.cents),9],[moneyCompact(a.cents),9],[moneyCompact(a.cents),8]];
+    const pick=opts.find(([t,px])=>textWidth(t,px,W)<=room);
+    box.textContent=pick?pick[0]:'';
+    if(pick && pick[1]!==9) box.style.fontSize=pick[1]+'px';
+    box.addEventListener('click',e=>{ e.stopPropagation(); openInvoiceEntry(e,r,ai); });
+    box.addEventListener('contextmenu',e=>{ e.preventDefault(); e.stopPropagation(); openInvoiceMenu(e,r,ai,row); });
+    attachTip(box,()=>{
+      const k=periodKey(actualLumpDate(a),mode);
+      return `<strong>${escHtml(h.name)}</strong><br>${escHtml(a.label||'Actual invoice')} <strong>${money2(a.cents)}</strong>`
+        +`<br>For ${fmtDisplay(a.start)} to ${fmtDisplay(a.end)}`
+        +`<br>Dated ${fmtDisplay(actualLumpDate(a))}, counted in ${escHtml(periodName(k,mode,true))}`
+        +`<br><span style="opacity:.6;font-style:italic">Click to change, right-click for options</span>`;
+    });
+    row.appendChild(box);
+  });
+}
+
+function labelTip(r,key,mode,kind,p){
+  const h=r.h, b=periodBounds(key,mode), C=r.cents;
+  let html=`<strong>${escHtml(h.name)}</strong><br>${SUB_NAMES[kind]}, ${escHtml(periodName(key,mode,true))}`
+    +`<br>${fmtDisplay(b.start)} to ${fmtDisplay(b.end)}`;
+  const bp=r.periods.get(key), bc=bp?bp.cents:0;
+  if(kind==='b'){
+    html+=`<br>${p.days} of ${r.days} working days`
+      +`<br><strong>${money2(p.cents)}</strong> <span style="opacity:.7">(${(C?p.cents/C*100:0).toFixed(1)}% of ${money2(C)})</span>`;
+    return html+`<br><span style="opacity:.6;font-style:italic">Actual invoices go on the Actual row</span>`;
+  }
+  html+=`<br><strong>${money2(p.freeCents)}</strong> still to be invoiced`;
+  html+=`<br><span style="opacity:.75">${p.free} working day${p.free!==1?'s':''} not yet invoiced share the ${money2(r.a.R)} left of the fee</span>`;
+  const by=[...new Set([...(p.lockBy||[]),...p.act])].map(i=>h.actuals[i]).filter(Boolean);
+  if(by.length) html+=`<br>Part of this ${unitName(mode)} is already invoiced: ${by.map(a=>escHtml(a.label||'invoice')).join(', ')}`;
+  return html+`<br><span style="opacity:.6;font-style:italic">Enter actual invoices on the Actual invoiced row.</span>`;
+}
+
+function barTip(r){
+  const h=r.h, sp=headingSpan(h);
+  let html=`<strong>${escHtml(h.name)}</strong><br>${fmtDisplay(sp.start)} to ${fmtDisplay(sp.end)}<br>${r.days} working days`;
+  if(h.segments.length>1) html+=` in ${h.segments.length} periods`;
+  if(r.cents){
+    html+=`<br>Total fee ${money2(r.cents)} <span style="opacity:.75">(${money2(Math.round(r.cents/Math.max(1,r.days)))} per working day)</span>`
+      +`<br>Budget elapsed ${money2(r.budgetToDate)}, remaining ${money2(r.budgetRemaining)}`
+      +`<br>Actually invoiced ${money2(r.actToDate)}, still to invoice ${money2(r.actRemaining)}`;
+  } else html+='<br><span style="opacity:.7">No total fee entered</span>';
+  if(h.comments) html+=`<br><span style="opacity:.75;font-style:italic">💬 ${escHtml(h.comments)}</span>`;
+  return html;
+}
+
+function renderTodayLine(totalPx) {
+  const x=xForDate(fmt(new Date()));
+  const line=document.getElementById('today-line');
+  const label=document.getElementById('today-label');
+  if(x>=0&&x<=totalPx&&headings.length){
+    line.style.left=x+'px'; line.style.height=rowsHeight()+'px'; line.style.display='block';
+    label.style.left=x+'px'; label.style.display='block';
+  } else { line.style.display='none'; label.style.display='none'; }
+}
+
+// ═══════════════════════════════════════════════════════
+//  ACTUAL INVOICE ENTRY: click / right-click menu and entry popup
+//  The popup lists every invoice dated in the clicked week or billing
+//  period (label + amount, ✕ to remove) plus an empty line to add one.
+//  A new invoice covers the clicked period and is dated on its last
+//  working day.
+// ═══════════════════════════════════════════════════════
+// ctxTarget = {idx, b:{start,end}, mode, name, unit, inv, x, y}
+//   from a click on empty space: b = that week or billing period
+//   from a click on an invoice box: b = that invoice's own period (inv:true)
+let ctxTarget=null;
+function periodTarget(idx,key,mode,e){
+  const b=periodBounds(key,mode);
+  return {idx, b:{start:b.start,end:b.end}, mode, name:periodName(key,mode,true), unit:unitName(mode), inv:false, x:e.clientX, y:e.clientY};
+}
+function invoiceTarget(idx,a,e){
+  return {idx, b:{start:a.start,end:a.end}, mode:a.mode, name:`${fmtDisplay(a.start)} to ${fmtDisplay(a.end)}`, unit:'period', inv:true, x:e.clientX, y:e.clientY};
+}
+
+function periodAtEvent(e, rowEl){
+  const x=e.clientX-rowEl.getBoundingClientRect().left;
+  return periodKey(dateAtX(x),breakdownView);
+}
+// The invoices a target covers: for an invoice box, every invoice for that
+// exact period; for a week or billing period, every invoice dated in it.
+function targetInvoices(h,t){
+  return (h.actuals||[]).map((a,i)=>({a,i})).filter(x=> t.inv
+    ? (x.a.start===t.b.start && x.a.end===t.b.end)
+    : (actualLumpDate(x.a)>=t.b.start && actualLumpDate(x.a)<=t.b.end));
+}
+
+function openRowMenu(e, idx, kind, rowEl){
+  e.preventDefault();
+  hideTooltip(); closeOverridePopup();
+  const mode=breakdownView, key=periodAtEvent(e,rowEl), h=headings[idx];
+  ctxTarget=periodTarget(idx,key,mode,e);
+  const items=[];
+  document.getElementById('ctx-title').textContent=`${SUB_NAMES[kind]} · ${periodName(key,mode,false)}`;
+  const here=targetInvoices(h,ctxTarget);
+  const enter=`<div class="ctx-item" onclick="ctxEnterActual()">✎ ${here.length?'Change or add actual invoices':'Enter actual invoice'} for this ${unitName(mode)}…</div>`;
+  showMenu(e, kind==='b'
+    ? [`<div class="ctx-item info">Budget is the total fee spread evenly over the working days.</div>`, enter]
+    : kind==='i'
+    ? [`<div class="ctx-item info">What is still to be invoiced: the total fee less actual invoices, spread pro rata over the periods without an invoice.</div>`, enter]
+    : [enter].concat(here.length?[`<div class="ctx-item" onclick="ctxClearPeriod()">↺ Remove ${here.length===1?'the invoice':`the ${here.length} invoices`} dated in this ${unitName(mode)}</div>`]:[])
+             .concat(allItem(h)));
+}
+function allItem(h){
+  const n=(h.actuals||[]).length;
+  return n?[`<div class="ctx-sep"></div><div class="ctx-item danger" onclick="ctxClearAll()">✕ Remove all ${n} actual invoice${n!==1?'s':''} for this heading</div>`]:[];
+}
+function showMenu(e, items){
+  document.getElementById('ctx-items').innerHTML=items.join('');
+  const m=document.getElementById('ctx-menu');
+  m.classList.add('visible');
+  const r=m.getBoundingClientRect();
+  m.style.left=Math.min(e.clientX, window.innerWidth-r.width-8)+'px';
+  m.style.top=Math.min(e.clientY, window.innerHeight-r.height-8)+'px';
+}
+// Right-click on an invoice box: that invoice, or a new one for the week /
+// billing period under the mouse (which may sit inside the invoice's period).
+function openInvoiceMenu(e, r, ai, rowEl){
+  hideTooltip(); closeOverridePopup();
+  const idx=headings.indexOf(r.h), h=r.h, a=h.actuals[ai];
+  const key=periodAtEvent(e,rowEl), mode=breakdownView;
+  invMenuCtx={idx, ai, inv:invoiceTarget(idx,a,e), period:periodTarget(idx,key,mode,e)};
+  document.getElementById('ctx-title').textContent=`${a.label||'Actual invoice'} · ${fmtDisplay(a.start)} to ${fmtDisplay(a.end)}`;
+  showMenu(e, [
+    `<div class="ctx-item" onclick="ctxEditInvoice()">✎ Change this invoice…</div>`,
+    `<div class="ctx-item" onclick="ctxAddForPeriod()">＋ Add an invoice for ${escHtml(periodName(key,mode,false))}…</div>`,
+    `<div class="ctx-item" onclick="ctxRemoveInvoice()">↺ Remove this invoice</div>`
+  ].concat(allItem(h)));
+  ctxTarget=invMenuCtx.inv;
+}
+let invMenuCtx=null;
+function ctxEditInvoice(){ closeCtx(); if(!invMenuCtx) return; ctxTarget=invMenuCtx.inv; openActualPopup(); }
+function ctxAddForPeriod(){ closeCtx(); if(!invMenuCtx) return; ctxTarget={...invMenuCtx.period, addOnly:true}; openActualPopup(); }
+function ctxRemoveInvoice(){
+  closeCtx(); if(!invMenuCtx) return;
+  const h=headings[invMenuCtx.idx];
+  h.actuals=(h.actuals||[]).filter((a,i)=>i!==invMenuCtx.ai);
+  refresh();
+}
+function openInvoiceEntry(e, r, ai){
+  hideTooltip(); closeCtx();
+  const idx=headings.indexOf(r.h);
+  ctxTarget=invoiceTarget(idx, r.h.actuals[ai], e);
+  openActualPopup();
+}
+function closeCtx(){ document.getElementById('ctx-menu').classList.remove('visible'); }
+
+function openActualEntryAt(e, idx, rowEl){
+  hideTooltip(); closeCtx();
+  ctxTarget=periodTarget(idx, periodAtEvent(e,rowEl), breakdownView, e);
+  openActualPopup();
+}
+function ctxEnterActual(){ closeCtx(); if(ctxTarget) openActualPopup(); }
+
+function popupRow(label, cents, ai){
+  const isNew = ai===null;
+  return `<div class="op-row" data-ai="${isNew?'new':ai}">
+    <input class="op-lbl" ${isNew?'id="op-label"':''} type="text" maxlength="16" autocomplete="off" spellcheck="false" placeholder="Label" value="${escHtml(label||'')}" title="Optional short label shown before the amount, e.g. INV01">
+    <input class="op-amt" ${isNew?'id="op-input"':''} type="text" inputmode="decimal" autocomplete="off" spellcheck="false" placeholder="${isNew?'Add invoice $0.00':'$0.00'}" value="${cents===null?'':(cents/100).toFixed(2)}">
+    ${isNew?'<span class="op-del" style="visibility:hidden">✕</span>':`<button class="op-del" type="button" title="Remove this invoice" onclick="removePopupRow(this)">✕</button>`}
+  </div>`;
+}
+function openActualPopup(){
+  const t=ctxTarget, h=headings[t.idx], b=t.b;
+  const here=t.addOnly ? [] : targetInvoices(h,t);
+  document.getElementById('op-title').textContent=h.name;
+  document.getElementById('op-sub').textContent = t.inv
+    ? `Actual invoiced for ${fmtDisplay(b.start)} to ${fmtDisplay(b.end)}`
+    : `Actual invoiced, ${t.name} (${fmtDisplay(b.start)} to ${fmtDisplay(b.end)})`;
+  const rows=document.getElementById('op-rows');
+  rows.innerHTML=here.map(x=>popupRow(x.a.label,x.a.cents,x.i)).join('')+popupRow('',null,null);
+  rows.querySelectorAll('input').forEach(inp=>{
+    inp.addEventListener('input',updateOverrideHint);
+    inp.addEventListener('keydown',e=>{
+      if(e.key==='Enter'){ e.preventDefault(); commitOverride(); }
+      if(e.key==='Escape'){ e.preventDefault(); closeOverridePopup(); }
+    });
+  });
+  const pop=document.getElementById('ovr-popup');
+  pop.classList.add('visible');
+  const pr=pop.getBoundingClientRect();
+  pop.style.left=Math.max(8,Math.min(ctxTarget.x, window.innerWidth-pr.width-8))+'px';
+  pop.style.top=Math.max(8,Math.min(ctxTarget.y+8, window.innerHeight-pr.height-8))+'px';
+  updateOverrideHint();
+  // Editing an existing invoice is the common case; otherwise start a new one
+  const first=rows.querySelector(here.length?'.op-row .op-amt':'#op-input');
+  first.focus(); first.select();   // synchronous, so typing straight away lands in the box
+}
+function removePopupRow(btn){
+  const row=btn.closest('.op-row');
+  row.dataset.del='1'; row.style.display='none';
+  updateOverrideHint();
+}
+// The heading's actuals as they would be if the popup were applied, or null
+// (with the bad box marked) if an amount is not recognised.
+function popupActuals(){
+  const {idx,mode}=ctxTarget, h=headings[idx], b=ctxTarget.b;
+  const out=(h.actuals||[]).map(a=>({...a}));
+  const drop=new Set(); let bad=false; let added=null;
+  document.querySelectorAll('#op-rows .op-row').forEach(row=>{
+    const amt=row.querySelector('.op-amt'), raw=amt.value.trim();
+    const label=cleanLabel(row.querySelector('.op-lbl').value);
+    const v= raw==='' ? null : parseMoney(raw);
+    amt.classList.toggle('invalid', raw!=='' && v===null);
+    if(raw!=='' && v===null){ bad=true; return; }
+    if(row.dataset.ai==='new'){
+      if(v!==null) added={start:b.start,end:b.end,cents:Math.round(v*100),mode,...(label?{label}:{})};
+      return;
+    }
+    const i=+row.dataset.ai;
+    if(row.dataset.del==='1' || v===null){ drop.add(i); return; }
+    out[i].cents=Math.round(v*100);
+    if(label) out[i].label=label; else delete out[i].label;
+  });
+  if(bad) return null;
+  const list=out.filter((a,i)=>!drop.has(i));
+  if(added) list.push(added);
+  return list.sort((x,y)=>x.start<y.start?-1:x.start>y.start?1:0);
+}
+
+// Live preview of what the figures do to the rest of the Invoiced row
+function updateOverrideHint(){
+  const hint=document.getElementById('op-hint');
+  if(!ctxTarget) return;
+  const {idx}=ctxTarget, h=headings[idx], b=ctxTarget.b;
+  const view=breakdownView, unit=ctxTarget.unit;
+  const list=popupActuals();
+  if(!list){ hint.className='op-hint warn'; hint.textContent='Not recognised. Try 12345.50, $12,345.50 or 12k.'; return; }
+  const a=allocateHeading({...h, actuals:list});
+  const freeKeys=new Set(a.free.map(d=>periodKey(d,view)));
+  const noWork=!headingWorkdays(h).some(d=>d>=b.start&&d<=b.end);
+  // Already covered by an invoice entered for a longer period?
+  const cover=(h.actuals||[]).filter(x=>x.start<=b.start&&x.end>=b.end&&!(x.start===b.start&&x.end===b.end));
+  let msg='', warn=false;
+  if(noWork) msg+=`No programmed work for this heading in this ${unit}; an invoice here is recorded anyway. `;
+  if(cover.length) msg+=`This ${unit} is already inside ${cover.map(x=>x.label||'an invoice').join(', ')} (${fmtDisplay(cover[0].start)} to ${fmtDisplay(cover[0].end)}). `;
+  if(a.imbalance){ warn=true; msg+=`Every working day would then be in an invoiced period. Actual invoices would total ${money2(a.actualSum)} against a total fee of ${money2(a.C)}, and the ${money2(Math.abs(a.imbalance))} difference has nowhere to go.`; }
+  else if(a.R<0){ warn=true; msg+=`Actual invoices would total ${money2(a.actualSum)}, more than the ${money2(a.C)} total fee, so the other ${unitName(view)}s go negative (${money2(a.R)} between them).`; }
+  else msg+=`Still to invoice ${money2(a.R)} of the ${money2(a.C)} total fee, spread pro rata over ${freeKeys.size} other ${unitName(view)}${freeKeys.size!==1?'s':''}.`;
+  hint.className='op-hint'+(warn?' warn':'');
+  hint.textContent=msg;
+}
+function commitOverride(){
+  if(!ctxTarget) return;
+  const list=popupActuals();
+  if(!list) return;
+  headings[ctxTarget.idx].actuals=list;
+  if(document.activeElement && document.activeElement.blur) document.activeElement.blur();   // leave nothing focused in the hidden popup
+  closeOverridePopup();
+  refresh();
+}
+function closeOverridePopup(){ document.getElementById('ovr-popup').classList.remove('visible'); }
+function ctxClearPeriod(){
+  closeCtx(); if(!ctxTarget) return;
+  const h=headings[ctxTarget.idx];
+  const drop=new Set(targetInvoices(h,ctxTarget).map(x=>x.i));
+  h.actuals=(h.actuals||[]).filter((a,i)=>!drop.has(i));
+  refresh();
+}
+function ctxClearAll(){
+  closeCtx(); if(!ctxTarget) return;
+  headings[ctxTarget.idx].actuals=[];
+  refresh();
+  flashStatus('Actual invoices removed. Undo brings them back.');
+}
+document.addEventListener('mousedown',e=>{
+  const m=document.getElementById('ctx-menu'), pop=document.getElementById('ovr-popup');
+  if(m.classList.contains('visible') && !m.contains(e.target)) closeCtx();
+  // A click on the Actual row opens the popup itself, so leave that alone
+  if(pop.classList.contains('visible') && !pop.contains(e.target) && !e.target.closest('.act-row')) closeOverridePopup();
+});
+
+// ═══════════════════════════════════════════════════════
+//  WEEKLY / MONTHLY
+// ═══════════════════════════════════════════════════════
+function setBreakdown(mode){
+  breakdownPref = mode==='billing' ? 'billing' : 'weekly';
+  renderGantt(); renderLeft(); applyRowHighlight();
+  if(breakdownPref==='weekly' && breakdownForced) flashStatus(`Weekly figures need about ${weeklyMinZoom} px/day. Zoom in to see them.`);
+}
+function updateBreakdownUI(){
+  const wb=document.getElementById('bd-weekly'), mb=document.getElementById('bd-billing');
+  wb.classList.toggle('active', breakdownView==='weekly');
+  mb.classList.toggle('active', breakdownView==='billing');
+  wb.classList.toggle('forced', breakdownForced);
+  mb.innerHTML = escHtml(billingShort()) + (breakdownForced?'<span class="auto-tag">auto</span>':'');
+  wb.title = breakdownForced
+    ? `Weekly figures do not fit at ${pxPerDay} px/day, so billing periods are shown. Zoom to ${weeklyMinZoom} px/day or more to see weeks.`
+    : 'Show the forecast week by week';
+  mb.title = breakdownForced
+    ? 'Shown automatically because the weekly figures do not fit at this zoom'
+    : `Show the forecast by billing period: ${billingFreqName().toLowerCase()}, invoiced on ${billingDayText()}. Change it in Settings.`;
+}
+
+function toggleNonWorkBands(){
+  showNonWorkBands=!showNonWorkBands;
+  document.getElementById('nonwork-btn').classList.toggle('active',showNonWorkBands);
+  renderGantt();
+}
+
+function toggleDurationMode(e){
+  e.preventDefault();
+  durationMode = durationMode==='days' ? 'weeks' : 'days';
+  renderLeft(); applyRowHighlight();
+}
+
+// ═══════════════════════════════════════════════════════
+//  STATUS
+// ═══════════════════════════════════════════════════════
+function updateStatus(fc){
+  const n=headings.length;
+  document.getElementById('sb-headings').textContent=`${n} heading${n!==1?'s':''}`;
+  document.getElementById('sb-total').textContent= n ? `Total fees ${money2(fc.totalFee)}` : '–';
+  const {start,end}=overallSpan();
+  document.getElementById('sb-span').textContent = start ? `${fmtDisplay(start)} to ${fmtDisplay(end)}` : '–';
+  const noFee=headings.filter(h=>!feeCents(h)&&headingWorkdays(h).length).length;
+  const warn=[];
+  if(fc.unallocated) warn.push(`${money2(fc.unallocated)} on headings with no working days`);
+  if(n && noFee) warn.push(`${noFee} heading${noFee!==1?'s':''} without a total fee`);
+  fc.imbalanced.forEach(r=>warn.push(`${r.h.name}: ${money2(Math.abs(r.a.imbalance))} of the fee has no period left to go in`));
+  fc.rows.forEach(r=>{ if(!r.a.imbalance && r.a.R<0) warn.push(`${r.h.name}: actual invoices exceed the fee`); });
+  document.getElementById('sb-warn').textContent=warn.join(' · ');
+  const hid=document.getElementById('sb-hidden');
+  hid.style.display=hiddenHeadings.length?'':'none';
+  hid.textContent=`${hiddenHeadings.length} hidden · show`;
+  updateFileStatus();
+}
+let _flashT=null;
+function flashStatus(msg){
+  const el=document.getElementById('sb-warn');
+  el.textContent=msg; el.style.color='#93c5fd';
+  clearTimeout(_flashT);
+  _flashT=setTimeout(()=>{ el.style.color=''; if(currentForecast) updateStatus(currentForecast); },3500);
+}
+
+// ═══════════════════════════════════════════════════════
+//  FEE ENTRY
+// ═══════════════════════════════════════════════════════
+function feeFocus(el){
+  const h=headings[+el.dataset.idx]; if(!h) return;
+  const C=feeCents(h);
+  el.dataset.orig = C ? (C/100).toFixed(2) : '';
+  el.value = el.dataset.orig;
+  el.classList.remove('invalid');
+  // Deferred so the click that focused the field does not undo the
+  // selection; skipped if typing has already started.
+  setTimeout(()=>{ if(el.value===el.dataset.orig) el.select(); },0);
+}
+function feeKey(e,el){
+  if(e.key==='Enter'){ e.preventDefault(); el.blur(); }
+  else if(e.key==='Escape'){ e.preventDefault(); el.value=el.dataset.orig||''; el.blur(); }
+}
+// Commit on blur. Tabbing to the next fee keeps working through the
+// re-render: the target row's input is refocused afterwards.
+function feeBlur(e,el){
+  const idx=+el.dataset.idx, h=headings[idx]; if(!h) return;
+  const next=e.relatedTarget && e.relatedTarget.classList && e.relatedTarget.classList.contains('fee-input')
+    ? e.relatedTarget.dataset.idx : null;
+  const v=parseMoney(el.value);
+  if(v===null){
+    el.classList.add('invalid');
+    flashStatus('Fee not recognised. Try 12345.50, $12,345.50, 120k or 1.2m.');
+    setTimeout(()=>{ el.value=feeCents(h)?money2(feeCents(h)):''; el.classList.remove('invalid'); },900);
+    return;
+  }
+  const newC=Math.max(0,Math.round(v*100));
+  if(newC===feeCents(h)){ el.value = newC?money2(newC):''; return; }
+  h.fee=newC/100;
+  refresh();
+  if(next!==null){
+    const t=document.querySelector(`.fee-input[data-idx="${next}"]`);
+    if(t) t.focus();
+  }
+}
+
+// Removing a heading only hides it from the forecast: the programme keeps
+// it, and its figures are kept (saved with excluded:true).
+function deleteHeading(idx){
+  const [h]=headings.splice(idx,1);
+  h.excluded=true;
+  hiddenHeadings.push(h);
+  refresh();
+  flashStatus('Heading hidden from the forecast. "hidden · show" in the status bar brings it back.');
+}
+function restoreHidden(){
+  if(!hiddenHeadings.length) return;
+  hiddenHeadings.forEach(h=>{ h.excluded=false; });
+  setHeadingLists(allHeadings());
+  refresh();
+}
+
+// ═══════════════════════════════════════════════════════
+//  ROW REORDER (drag the ⠿ handle)
+// ═══════════════════════════════════════════════════════
+function startRowDrag(e, idx){
+  if(e.button!==0) return;
+  e.preventDefault();
+  const body=document.getElementById('left-body');
+  // A heading moves with its Budget, Invoiced and Actual rows, so drop
+  // targets are whole blocks: heading row top to Actual row bottom.
+  const blocks=headings.map((_,i)=>{
+    const rows=[...body.querySelectorAll(`[data-idx="${i}"]`)];
+    return {i, rows, first:rows[0], last:rows[rows.length-1]};
+  });
+  const src=blocks[idx];
+  src.rows.forEach(r=>r.classList.add('row-dragging'));
+  document.body.style.cursor='grabbing';
+  let target=null, after=false;
+  const clear=()=>body.querySelectorAll('.row-drop-above,.row-drop-below').forEach(r=>r.classList.remove('row-drop-above','row-drop-below'));
+  function onMove(me){
+    clear(); target=null;
+    for(const bk of blocks){
+      const top=bk.first.getBoundingClientRect().top, bot=bk.last.getBoundingClientRect().bottom;
+      const lastBlock = bk===blocks[blocks.length-1];
+      if(me.clientY>=top && (me.clientY<bot || lastBlock)){
+        target=bk.i; after=me.clientY>(top+bot)/2;
+        if(target!==idx) (after?bk.last:bk.first).classList.add(after?'row-drop-below':'row-drop-above');
+        break;
+      }
+    }
+  }
+  function onUp(){
+    document.removeEventListener('mousemove',onMove);
+    document.removeEventListener('mouseup',onUp);
+    document.body.style.cursor='';
+    src.rows.forEach(r=>r.classList.remove('row-dragging')); clear();
+    if(target===null || target===idx) return;
+    const [moved]=headings.splice(idx,1);
+    let to=target + (after?1:0);
+    if(idx<to) to--;
+    headings.splice(to,0,moved);
+    headings.forEach((h,n)=>{ h.order=n; });   // saved, so the order survives a programme update
+    refresh();
+  }
+  document.addEventListener('mousemove',onMove);
+  document.addEventListener('mouseup',onUp);
+}
+
+// ═══════════════════════════════════════════════════════
+//  COLOUR PICKER
+// ═══════════════════════════════════════════════════════
+let colorPopupIdx=-1;
+function openColorPicker(e, idx){
+  e.stopPropagation();
+  colorPopupIdx=idx;
+  const input=document.getElementById('color-input');
+  input.value=headings[idx].color;
+  const popup=document.getElementById('color-popup');
+  popup.classList.add('visible');
+  const rect=e.currentTarget.getBoundingClientRect();
+  let left=rect.right+8, top=rect.top-10;
+  if(left+200>window.innerWidth) left=rect.left-200;
+  if(top+180>window.innerHeight) top=window.innerHeight-190;
+  popup.style.left=left+'px'; popup.style.top=Math.max(8,top)+'px';
+  setTimeout(()=>input.focus(),10);
+}
+function commitColor(){
+  if(colorPopupIdx<0) return;
+  // Forecast-only colour: the Gantt colour is left alone, and choosing the
+  // programme colour again goes back to following it.
+  const h=headings[colorPopupIdx], val=document.getElementById('color-input').value;
+  h.fcColor = val.toLowerCase()===String(h.progColor).toLowerCase() ? null : val;
+  h.color = h.fcColor || h.progColor;
+  closeColorPicker();
+  refresh();
+}
+function closeColorPicker(){
+  document.getElementById('color-popup').classList.remove('visible');
+  colorPopupIdx=-1;
+}
+document.getElementById('color-input').addEventListener('keydown',e=>{
+  if(e.key==='Enter'){ e.preventDefault(); commitColor(); }
+  if(e.key==='Escape'){ e.preventDefault(); closeColorPicker(); }
+});
+document.addEventListener('mousedown',e=>{
+  const popup=document.getElementById('color-popup');
+  if(popup.classList.contains('visible') && !popup.contains(e.target)) closeColorPicker();
+});
+
+// ═══════════════════════════════════════════════════════
+//  UNDO / REDO (same model as GanttTool.html)
+//  Data-only signature recorded at the END of refresh, pushed only when
+//  the data actually changed. View state (zoom, weekly/billing, working
+//  day shading, days/weeks) never becomes an undo step.
+// ═══════════════════════════════════════════════════════
+const MAX_UNDO=100;
+let undoStack=[], redoStack=[], lastState=null, undoEnabled=true;
+
+// Snapshots hold the FIGURES only (fees, invoices, colours, order, hidden,
+// billing), keyed by heading id, never the programme. So undo keeps working
+// after the programme is re-read from the linked file: an undo puts the
+// figures back on today's dates instead of rolling the dates back too.
+function stateSignature(){
+  const figs={};
+  allHeadings().forEach(h=>{ const f=figuresOf(h); delete f.savedAt; figs[h.id]=f; });
+  return JSON.stringify({figs, order:headings.map(h=>h.id), hidden:hiddenHeadings.map(h=>h.id), billing});
+}
+function recordState(){
+  const sig=stateSignature();
+  if(!undoEnabled){ lastState=sig; updateUndoIndicator(); return; }
+  if(sig===lastState) return;
+  if(lastState!==null){
+    undoStack.push(lastState);
+    if(undoStack.length>MAX_UNDO) undoStack.shift();
+    redoStack.length=0;
+  }
+  lastState=sig;
+  updateUndoIndicator();
+}
+function undo(){
+  if(!undoStack.length) return;
+  closeOverridePopup(); closeCtx();
+  const target=undoStack.pop();
+  redoStack.push(lastState!==null?lastState:stateSignature());
+  applyState(target);
+  flashStatus(`Undone. ${undoStack.length} more step${undoStack.length!==1?'s':''} available.`);
+}
+function redo(){
+  if(!redoStack.length) return;
+  closeOverridePopup(); closeCtx();
+  const target=redoStack.pop();
+  undoStack.push(lastState!==null?lastState:stateSignature());
+  applyState(target);
+  flashStatus('Redone.');
+}
+function applyState(str){
+  const s=JSON.parse(str);
+  const all=allHeadings(), byId=new Map(all.map(h=>[h.id,h]));
+  all.forEach(h=>{ const f=s.figs[h.id]; if(f) applyFigures(h, {...f, savedAt:h.savedAt||''}); });
+  const vis=(s.order||[]).map(id=>byId.get(id)).filter(Boolean);
+  const hid=(s.hidden||[]).map(id=>byId.get(id)).filter(Boolean);
+  const rest=all.filter(h=>!vis.includes(h)&&!hid.includes(h));   // headings added to the programme since
+  headings=vis.concat(rest.filter(h=>!h.excluded));
+  hiddenHeadings=hid.concat(rest.filter(h=>h.excluded));
+  billing=sanitiseBilling(s.billing); _billCache.sig='';
+  undoEnabled=false; refresh(); undoEnabled=true;
+  updateUndoIndicator();
+}
+function resetUndo(){ undoStack.length=0; redoStack.length=0; lastState=null; }
+function updateUndoIndicator(){
+  const ub=document.getElementById('undo-btn'), rb=document.getElementById('redo-btn');
+  ub.style.opacity=undoStack.length?'1':'0.35';
+  ub.title=undoStack.length?`Undo (${undoStack.length} step${undoStack.length!==1?'s':''}) — Ctrl+Z`:'Nothing to undo';
+  rb.style.opacity=redoStack.length?'1':'0.35';
+  rb.title=redoStack.length?`Redo (${redoStack.length} step${redoStack.length!==1?'s':''}) — Ctrl+Y`:'Nothing to redo';
+}
+
+// ═══════════════════════════════════════════════════════
+//  REFRESH
+// ═══════════════════════════════════════════════════════
+function refresh(){
+  renderGantt();   // first: builds the forecast the left panel reads
+  renderLeft();
+  applyRowHighlight();
+  recordState();
+  updateSaveMarker();
+}
+function syncProjectStartDisplay(){
+  document.getElementById('project-start-display').value = projectStartStr ? fmtDisplay(projectStartStr) : '';
+}
+
+// ═══════════════════════════════════════════════════════
+//  SCROLL SYNC
+// ═══════════════════════════════════════════════════════
+let syncing=false;
+function syncScrollSetup(){
+  const lb=document.getElementById('left-body'), gb=document.getElementById('gantt-body'), gh=document.getElementById('gantt-header');
+  lb.onscroll=()=>{ if(syncing)return; syncing=true; gb.scrollTop=lb.scrollTop; syncing=false; };
+  gb.onscroll=()=>{ if(syncing)return; syncing=true; lb.scrollTop=gb.scrollTop; gh.scrollLeft=gb.scrollLeft; syncing=false; };
+  // Scrolling sideways over the date / totals rows must move the whole
+  // chart, not just the header strip (it used to scroll on its own).
+  gh.onscroll=()=>{ if(syncing)return; syncing=true; gb.scrollLeft=gh.scrollLeft; syncing=false; };
+}
+
+// ═══════════════════════════════════════════════════════
+//  PANEL RESIZE (same behaviour as GanttTool.html)
+//  The main divider widens/narrows Comments first, then Heading.
+// ═══════════════════════════════════════════════════════
+const NAME_MIN=120, NAME_BASE=360, COMMENTS_FLOOR=2, COMMENTS_MAX=675;
+const FIXED_COLS=28+24+32+132+150+6;   // x, handle, colour, row title, total fee, borders
+const PANEL_MIN=FIXED_COLS+NAME_MIN+COMMENTS_FLOOR;
+const PANEL_MAX=FIXED_COLS+900+COMMENTS_MAX;
+function cssPx(name,fallback){ return parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name))||fallback; }
+function applyPanelWidths(panelWidth){
+  const root=document.documentElement.style;
+  const curName=cssPx('--name-w',NAME_BASE), curComments=cssPx('--comments-w',COMMENTS_FLOOR);
+  let newComments=curComments+(panelWidth-FIXED_COLS-curName-curComments), newName=curName;
+  if(newComments>COMMENTS_MAX){ newName=curName+(newComments-COMMENTS_MAX); newComments=COMMENTS_MAX; }
+  else if(newComments<COMMENTS_FLOOR){ newName=curName+(newComments-COMMENTS_FLOOR); newComments=COMMENTS_FLOOR; }
+  newName=Math.max(NAME_MIN,newName);
+  root.setProperty('--name-w',newName+'px');
+  root.setProperty('--comments-w',newComments+'px');
+  if(window.positionColumnGrips) window.positionColumnGrips();
+}
+(()=>{
+  const h=document.getElementById('resize-handle'), lp=document.getElementById('left-panel');
+  let drag=false,sx,sw;
+  h.addEventListener('mousedown',e=>{drag=true;sx=e.clientX;sw=lp.offsetWidth;document.body.style.userSelect='none';document.body.style.cursor='col-resize';});
+  document.addEventListener('mousemove',e=>{
+    if(!drag)return;
+    const w=Math.max(PANEL_MIN,Math.min(PANEL_MAX,sw+e.clientX-sx));
+    lp.style.width=w+'px'; applyPanelWidths(w);
+  });
+  document.addEventListener('mouseup',()=>{ if(!drag)return; drag=false;document.body.style.userSelect='';document.body.style.cursor='';});
+})();
+(()=>{
+  const lp=document.getElementById('left-panel'), grip=document.getElementById('name-col-resize');
+  function positionGrips(){
+    grip.style.left=(28+24+32+cssPx('--name-w',NAME_BASE)-2)+'px';
+    grip.style.height=document.getElementById('left-header-cols').offsetHeight+'px';
+  }
+  window.positionColumnGrips=positionGrips;
+  let dragging=false,startX=0,startW=0,startPW=0;
+  grip.addEventListener('mousedown',e=>{
+    e.preventDefault(); e.stopPropagation();
+    dragging=true; startX=e.clientX; startW=cssPx('--name-w',NAME_BASE); startPW=lp.offsetWidth;
+    document.body.style.cursor='col-resize'; document.body.style.userSelect='none';
+  });
+  document.addEventListener('mousemove',e=>{
+    if(!dragging) return;
+    const w=Math.max(NAME_MIN,startW+e.clientX-startX);
+    document.documentElement.style.setProperty('--name-w',w+'px');
+    lp.style.width=(startPW+w-startW)+'px';
+    positionGrips();
+  });
+  document.addEventListener('mouseup',()=>{ if(!dragging)return; dragging=false; document.body.style.cursor=''; document.body.style.userSelect=''; });
+  positionGrips();
+  window.addEventListener('resize',positionGrips);
+})();
+applyPanelWidths(document.getElementById('left-panel').offsetWidth);
+
+// ═══════════════════════════════════════════════════════
+//  ZOOM
+// ═══════════════════════════════════════════════════════
+function adjustZoom(d){ setZoom(pxPerDay+d); }
+function setZoom(val){
+  pxPerDay=Math.max(2,Math.min(80,Math.round(val)||pxPerDay));
+  document.getElementById('zoom-val').value=pxPerDay;
+  // Zoom can switch weekly <-> billing view, which can change the Actual
+  // row heights, so both panels are redrawn to stay aligned.
+  renderGantt(); renderLeft(); applyRowHighlight();
+}
+
+// ═══════════════════════════════════════════════════════
+//  CROSS-PANEL ROW HIGHLIGHT
+// ═══════════════════════════════════════════════════════
+let hoveredRowIdx=null;
+function highlightRow(idx){ if(hoveredRowIdx===idx) return; hoveredRowIdx=idx; applyRowHighlight(); }
+function applyRowHighlight(){
+  document.querySelectorAll('.row-hl').forEach(el=>el.classList.remove('row-hl'));
+  if(hoveredRowIdx===null) return;
+  document.querySelectorAll(`#left-body [data-rk="${hoveredRowIdx}"],#gantt-rows [data-rk="${hoveredRowIdx}"]`)
+    .forEach(el=>el.classList.add('row-hl'));
+}
+function setupRowHover(){
+  ['left-body','gantt-rows'].forEach(id=>{
+    const host=document.getElementById(id);
+    host.addEventListener('mouseover',e=>{ const row=e.target.closest('[data-rk]'); highlightRow(row?row.dataset.rk:null); });
+    host.addEventListener('mouseleave',()=>highlightRow(null));
+  });
+}
+
+// ═══════════════════════════════════════════════════════
+//  MESSAGE / CHOICE MODAL
+//  showChoice(title, html, [{label, value, primary}]) -> Promise<value>
+// ═══════════════════════════════════════════════════════
+function showChoice(title, html, buttons){
+  return new Promise(resolve=>{
+    const m=document.getElementById('msg-modal');
+    document.getElementById('msg-title').textContent=title;
+    document.getElementById('msg-body').innerHTML=html;
+    const bw=document.getElementById('msg-buttons'); bw.innerHTML='';
+    const done=v=>{ m.style.display='none'; document.removeEventListener('keydown',onKey,true); resolve(v); };
+    const onKey=e=>{ if(e.key==='Escape'){ e.stopPropagation(); done(null); } };
+    document.addEventListener('keydown',onKey,true);
+    buttons.forEach(b=>{
+      const el=document.createElement('button');
+      el.className='modal-btn'+(b.primary?' primary':'');
+      el.textContent=b.label;
+      el.onclick=()=>done(b.value);
+      bw.appendChild(el);
+    });
+    m.style.display='flex';
+    const p=bw.querySelector('.primary'); if(p) p.focus();
+  });
+}
+function showMessage(title, html){ return showChoice(title, html, [{label:'OK', value:true, primary:true}]); }
+
+// ═══════════════════════════════════════════════════════
+//  THE PROGRAMME FILE IS THE ONE SOURCE OF TRUTH
+//  Import JSON reads the Gantt export, including any fees and actual
+//  invoices saved in it before. Save JSON writes them back into that same
+//  file, changing nothing but each heading's `forecast` property.
+//  Where the browser allows it (Chrome / Edge) the file stays linked:
+//   - coming back to this tab re-reads it, so programme changes made in the
+//     Gantt tool flow straight in, keeping the figures on screen
+//   - Save writes straight back to it, after checking it has not changed
+//     underneath (if it has, the newer programme is taken first)
+// ═══════════════════════════════════════════════════════
+function allHeadings(){ return headings.concat(hiddenHeadings); }
+// The billing setting saved in a file (on its headings), or the default
+function billingFromList(list){
+  const h=list.find(x=>x.fileBilling);
+  return h ? sanitiseBilling(h.fileBilling) : {...BILLING_DEFAULT};
+}
+function figuresSig(){
+  const m={_billing:billing};
+  allHeadings().forEach(h=>{ const p=forecastPayload(h); if(p) m[h.id]=p; });
+  return JSON.stringify(Object.keys(m).sort().map(k=>[k,m[k]]));
+}
+function isDirty(){ return !!programmeDoc && figuresSig()!==savedFiguresSig; }
+function updateSaveMarker(){
+  const b=document.getElementById('save-btn');
+  b.classList.toggle('dirty', isDirty());
+  b.title = isDirty() ? 'Unsaved changes. Save the fees and actual invoices back into the programme JSON.'
+                      : 'Save the fees and actual invoices back into the programme JSON, the same file the Gantt tool uses';
+}
+function updateFileStatus(){
+  const el=document.getElementById('sb-source');
+  if(!programmeSource){ el.textContent=''; return; }
+  el.textContent = fileHandle ? `Linked to ${programmeSource}` : `Programme: ${programmeSource}`;
+  el.title = fileHandle ? 'Changes saved in the Gantt tool are picked up when you come back to this tab. Save JSON writes back to this file.'
+                        : 'Not linked: Save JSON will ask where to save. Import again after changing the programme.';
+}
+// The programme without any forecast figures, for spotting real changes
+function programmeKey(doc){
+  if(!doc) return '';
+  return JSON.stringify({...doc, tasks:(doc.tasks||[]).map(t=>{ const c={...t}; delete c.forecast; delete c.collapsed; return c; })});
+}
+
+function sortForForecast(list){
+  const key=h=>h.order!=null?h.order:h.progIndex;
+  return list.slice().sort((a,b)=>key(a)-key(b) || a.progIndex-b.progIndex);
+}
+function setHeadingLists(list){
+  const sorted=sortForForecast(list);
+  headings=sorted.filter(h=>!h.excluded);
+  hiddenHeadings=sorted.filter(h=>h.excluded);
+}
+const normName=s=>String(s||'').trim().toLowerCase();
+// Pair each heading in a freshly read programme with one already on screen:
+// same id and name, then same name, then same id.
+function matchHeadings(list, old){
+  const used=new Set(), pairs=new Map();
+  list.forEach(nh=>{
+    const o=old.find(x=>!used.has(x)&&x.id===nh.id&&normName(x.name)===normName(nh.name))
+         || old.find(x=>!used.has(x)&&normName(x.name)===normName(nh.name))
+         || old.find(x=>!used.has(x)&&x.id===nh.id);
+    if(o){ used.add(o); pairs.set(nh,o); }
+  });
+  return {pairs, removed:old.filter(x=>!used.has(x))};
+}
+function figuresEqual(a,b){ return JSON.stringify(forecastPayload(a))===JSON.stringify(forecastPayload(b)); }
+
+function readFileText(file){
+  return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=()=>rej(r.error); r.readAsText(file); });
+}
+
+async function importJSON(){
+  if(isDirty()){
+    const go=await showChoice('Unsaved changes',
+      `<p>The fees or actual invoices on screen have not been saved to ${escHtml(programmeSource)}.</p><p style="margin-top:8px">Importing will ask whether to keep them, so nothing is lost yet.</p>`,
+      [{label:'Cancel',value:false},{label:'Continue',value:true,primary:true}]);
+    if(!go) return;
+  }
+  if(window.showOpenFilePicker){
+    try{
+      const [handle]=await window.showOpenFilePicker({types:[{description:'Programme JSON',accept:{'application/json':['.json']}}],multiple:false});
+      const file=await handle.getFile();
+      await openText(await readFileText(file), file.name, handle, file.lastModified);
+    }catch(e){ if(e.name!=='AbortError') showMessage('Could not open file', `<p>${escHtml(e.message)}</p>`); }
+    return;
+  }
+  const inp=document.createElement('input'); inp.type='file'; inp.accept='.json,application/json';
+  inp.onchange=async e=>{
+    const f=e.target.files[0]; if(!f) return;
+    await openText(await readFileText(f), f.name, null, f.lastModified);
+  };
+  inp.click();
+}
+
+async function openText(text, name, handle, stamp){
+  let d;
+  try{ d=JSON.parse(text); }
+  catch(err){ showMessage('Could not read file', `<p>${escHtml(name)} is not valid JSON.</p><p class="muted">${escHtml(err.message)}</p>`); return; }
+  if(d && Array.isArray(d.tasks)) return importProgramme(d, name, handle, stamp);
+  if(d && (d.app==='ForecastTool' || Array.isArray(d.headings))) return loadLegacyForecast(d, name);
+  showMessage('Not a programme file', `<p>${escHtml(name)} is not a Gantt tool export.</p>`);
+}
+
+async function importProgramme(d, fileName, handle, stamp){
+  const prevOverrides=workdayOverrides;
+  workdayOverrides = d.workdayOverrides ? {...d.workdayOverrides} : {};   // calendar first
+  const {list, loose} = headingsFromGantt(d);
+  if(!list.length){
+    workdayOverrides=prevOverrides;
+    showMessage('No headings found', `<p>${escHtml(fileName)} has no headings. The forecast is built from the programme's headings, so add headings in the Gantt tool, export again, and import that file.</p>`);
+    return;
+  }
+  const old=allHeadings();
+  let source='file', summary='';
+
+  if(old.length){
+    const {pairs, removed}=matchHeadings(list, old);
+    const fileBilling=billingFromList(list);
+    const differ=[...pairs].filter(([nh,o])=>!figuresEqual(nh,o));
+    if(JSON.stringify(fileBilling)!==JSON.stringify(billing) && !differ.length) differ.push([null,null]);
+    if(differ.length){
+      const fileHas=list.some(h=>forecastPayload(h));
+      source = await showChoice('Which figures?',
+        `<p>${differ[0][0]?`${differ.length} heading${differ.length!==1?'s have':' has'} different fees or actual invoices`:'The billing period setting is different'} on screen from ${escHtml(fileName)}.</p>
+         <p style="margin-top:8px"><strong>Keep figures on screen</strong> takes the programme dates from the file and keeps what you see now. Save JSON then writes them into the file.</p>
+         <p style="margin-top:8px"><strong>Use figures in file</strong> loads the file as it is.</p>
+         ${fileHas?'':'<p class="muted" style="margin-top:8px">The file has no forecast figures in it yet.</p>'}`,
+        [{label:'Cancel',value:null},{label:'Use figures in file',value:'file',primary:!fileHas?false:!isDirty()},{label:'Keep figures on screen',value:'memory',primary:!fileHas||isDirty()}]);
+      if(!source){ workdayOverrides=prevOverrides; return; }
+    }
+    if(source==='memory') pairs.forEach((o,nh)=>applyFigures(nh, figuresOf(o)));
+    else billing=billingFromList(list);
+    let moved=0; const added=[];
+    list.forEach(nh=>{ const o=pairs.get(nh); if(!o) added.push(nh.name||'(unnamed)'); else if(JSON.stringify(o.segments)!==JSON.stringify(nh.segments)) moved++; });
+    summary=`<p>${pairs.size} heading${pairs.size!==1?'s':''} matched${moved?`, ${moved} with new dates (budget and forecast re-spread; actual invoices stay where they are)`:', no date changes'}.</p>`;
+    if(added.length) summary+=`<p style="margin-top:8px">New in the programme:</p><ul>${added.map(n=>`<li>${escHtml(n)}</li>`).join('')}</ul>`;
+    if(removed.length) summary+=`<p style="margin-top:8px">No longer in the programme:</p><ul>${removed.map(o=>`<li>${escHtml(o.name)}${feeCents(o)?` (fee ${money2(feeCents(o))})`:''}</li>`).join('')}</ul>`;
+  } else {
+    // Fresh start: view settings follow the programme
+    if(d.pxPerDay){ pxPerDay=d.pxPerDay; document.getElementById('zoom-val').value=pxPerDay; }
+    showNonWorkBands=!!d.showNonWorkBands;
+    document.getElementById('nonwork-btn').classList.toggle('active',showNonWorkBands);
+    durationMode = d.durationMode==='weeks' ? 'weeks' : 'days';
+    billing=billingFromList(list);
+    const withFig=list.filter(h=>h.fee||h.actuals.length).length;
+    summary = withFig
+      ? `<p>${list.length} heading${list.length!==1?'s':''} loaded, ${withFig} with fees or actual invoices saved in the file.</p>`
+      : `<p>${list.length} heading${list.length!==1?'s':''} imported. Enter the total fee against each one.</p>`;
+    const restored=await offerLocalCopy(list, fileName);
+    if(restored) { source='memory'; summary+=`<p style="margin-top:8px">${restored} heading${restored!==1?'s':''} restored from the copy saved on this computer. Save JSON to put them back in the file.</p>`; }
+  }
+  if(loose) summary+=`<p class="muted" style="margin-top:8px">${loose} task${loose!==1?'s':''} not under a heading ${loose!==1?'are':'is'} not in the forecast.</p>`;
+  const noDates=list.filter(h=>!h.segments.length);
+  if(noDates.length) summary+=`<p class="muted" style="margin-top:8px">No dated work under: ${noDates.map(h=>escHtml(h.name)).join(', ')}.</p>`;
+
+  adoptProgramme(d, list, fileName, handle, stamp);
+  // Figures kept from the screen (or restored) differ from the file until saved
+  savedFiguresSig = source==='file' ? figuresSig() : figuresSigOf(d);
+  updateSaveMarker();
+  showMessage(old.length?'Programme updated':'Programme imported', summary);
+}
+
+function figuresSigOf(doc){
+  const prev=workdayOverrides, prevB=billing;
+  const {list}=headingsFromGantt(doc);
+  billing=billingFromList(list);
+  const m={_billing:billing};
+  list.forEach(h=>{ const p=forecastPayload(h); if(p) m[h.id]=p; });
+  workdayOverrides=prev; billing=prevB;
+  return JSON.stringify(Object.keys(m).sort().map(k=>[k,m[k]]));
+}
+
+function adoptProgramme(d, list, fileName, handle, stamp){
+  programmeDoc=d;
+  fileHandle=handle||null;
+  fileStamp=stamp||0;
+  const sameFile = programmeSource && programmeSource===(fileName||'');
+  programmeSource=fileName||'';
+  projectStartStr=d.projectStart||'';
+  setHeadingLists(list);
+  syncProjectStartDisplay();
+  // Re-reading the same file (programme changed in the Gantt tool) keeps the
+  // undo history: snapshots are figures only, so they still apply.
+  if(!sameFile) resetUndo();
+  undoEnabled=false; refresh(); undoEnabled=true; updateUndoIndicator();
+}
+
+// ── Coming back to this tab: pick up programme changes made in the Gantt tool
+let checkingFile=false;
+async function checkLinkedFile(force){
+  force = force===true;
+  if(!fileHandle || checkingFile || !programmeDoc) return;
+  if(document.querySelector('.modal-bg[style*="flex"]')) return;
+  checkingFile=true;
+  try{
+    const file=await fileHandle.getFile();
+    if(file.lastModified===fileStamp && !force) return;
+    const d=JSON.parse(await readFileText(file));
+    fileStamp=file.lastModified;
+    if(!Array.isArray(d.tasks)) return;
+    const progChanged = programmeKey(d)!==programmeKey(programmeDoc);
+    const fileFigs = figuresSigOf(d);
+    if(!progChanged && fileFigs===savedFiguresSig){ if(force) flashStatus(`Reloaded ${programmeSource}: no changes.`); return; }
+    workdayOverrides = d.workdayOverrides ? {...d.workdayOverrides} : {};
+    const {list}=headingsFromGantt(d);
+    const {pairs}=matchHeadings(list, allHeadings());
+    // Figures on screen are never older than the file's unless the file was
+    // saved by another forecast window. The Gantt tool only ever writes back
+    // what it loaded, so its copy can be stale: keep the screen.
+    const keepScreen = isDirty() || fileFigs===savedFiguresSig || progChanged;
+    if(keepScreen) pairs.forEach((o,nh)=>applyFigures(nh, figuresOf(o)));
+    else billing=billingFromList(list);
+    let moved=0; pairs.forEach((o,nh)=>{ if(JSON.stringify(o.segments)!==JSON.stringify(nh.segments)) moved++; });
+    const added=list.length-pairs.size;
+    const prevSaved=savedFiguresSig;
+    adoptProgramme(d, list, programmeSource, fileHandle, fileStamp);
+    savedFiguresSig = keepScreen ? (fileFigs===prevSaved ? prevSaved : fileFigs) : figuresSig();
+    updateSaveMarker();
+    flashStatus(progChanged
+      ? `Programme updated from ${programmeSource}: ${moved} heading${moved!==1?'s':''} re-dated${added?`, ${added} new`:''}. Figures re-spread.`
+      : `Figures reloaded from ${programmeSource}.`);
+  }catch(e){ console.warn('Linked file check failed', e); }
+  finally{ checkingFile=false; }
+}
+window.addEventListener('focus', ()=>checkLinkedFile());
+document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) checkLinkedFile(); });
+
+// Reload JSON: read the linked programme file again right now. Changes made
+// in the Gantt tool come in, and the fees and invoices on screen are kept.
+// Without a linked file (or where the browser cannot link one) it asks for
+// the file, and matches it to what is on screen.
+async function reloadJSON(){
+  if(fileHandle && programmeDoc){
+    try{
+      if(fileHandle.queryPermission && (await fileHandle.queryPermission({mode:'read'}))!=='granted' && fileHandle.requestPermission)
+        await fileHandle.requestPermission({mode:'read'});
+    }catch(e){}
+    return checkLinkedFile(true);
+  }
+  importJSON();
+}
+
+// ── Safety copy on this computer
+// If the Gantt tool still had an older copy of the file open, its next
+// export writes the older figures back. The last figures saved from here
+// are kept in the browser so they can be offered back on import.
+function cacheKey(name){ return 'ForecastTool:'+name; }
+function writeLocalCopy(){
+  try{
+    const m={}; allHeadings().forEach(h=>{ const p=forecastPayload(h); if(p) m[h.id]={name:h.name,p}; });
+    localStorage.setItem(cacheKey(programmeSource), JSON.stringify({savedAt:new Date().toISOString(), figures:m}));
+  }catch(e){}
+}
+async function offerLocalCopy(list, fileName){
+  let c=null;
+  try{ c=JSON.parse(localStorage.getItem(cacheKey(fileName))||'null'); }catch(e){}
+  if(!c || !c.figures) return 0;
+  const newer=list.filter(h=>{
+    const x=c.figures[h.id]; if(!x || normName(x.name)!==normName(h.name)) return false;
+    return JSON.stringify(x.p)!==JSON.stringify(forecastPayload(h)) && (!h.savedAt || h.savedAt<c.savedAt);
+  });
+  if(!newer.length) return 0;
+  const when=new Date(c.savedAt).toLocaleString('en-AU',{dateStyle:'medium',timeStyle:'short'});
+  const ok=await showChoice('Newer figures on this computer',
+    `<p>The figures last saved from this computer (${escHtml(when)}) are newer than the ones in ${escHtml(fileName)} for:</p>
+     <ul>${newer.map(h=>`<li>${escHtml(h.name)}</li>`).join('')}</ul>
+     <p style="margin-top:8px" class="muted">This usually means the Gantt tool still had an older copy of the file open and exported over them.</p>`,
+    [{label:'Use the file',value:false},{label:'Restore newer figures',value:true,primary:true}]);
+  if(!ok) return 0;
+  newer.forEach(h=>applyFigures(h, readForecastProp({...c.figures[h.id].p, savedAt:c.savedAt})));
+  return newer.length;
+}
+
+// ── Older forecast-only files (before the figures moved into the Gantt JSON)
+function loadLegacyForecast(d, fileName){
+  const list=(d.headings||[]).map((h,i)=>{
+    const x={id:h.id, name:h.name||'', progColor:h.color||'#64748b', comments:h.comments||'',
+      segments:Array.isArray(h.segments)?h.segments.filter(s=>s&&s.start&&s.end):[], progIndex:i};
+    // Earlier "overrides" were typed-in invoices: they become actual invoices
+    applyFigures(x, readForecastProp({fee:h.fee, actuals:h.actuals||h.overrides}));
+    return x;
+  });
+  programmeDoc=null; fileHandle=null; fileStamp=0;
+  programmeSource=d.programmeSource||'';
+  projectStartStr=d.projectStart||'';
+  workdayOverrides=d.workdayOverrides?{...d.workdayOverrides}:{};
+  if(d.pxPerDay){ pxPerDay=d.pxPerDay; document.getElementById('zoom-val').value=pxPerDay; }
+  breakdownPref=d.breakdown==='monthly'?'billing':'weekly';
+  if(d.title) document.getElementById('pdf-title').value=d.title;
+  setHeadingLists(list);
+  syncProjectStartDisplay();
+  resetUndo();
+  undoEnabled=false; refresh(); undoEnabled=true; updateUndoIndicator();
+  showMessage('Older forecast file',
+    `<p>${escHtml(fileName)} is a forecast saved before the figures moved into the programme file.</p>
+     <p style="margin-top:8px">Now Import the programme JSON${programmeSource?` (${escHtml(programmeSource)})`:''} and choose <strong>Keep figures on screen</strong>. Save JSON then writes these fees and invoices into it, and this file is no longer needed.</p>`);
+}
+
+// ═══════════════════════════════════════════════════════
+//  SAVE JSON / EXPORT CSV
+// ═══════════════════════════════════════════════════════
+function exportBaseName(){
+  return (document.getElementById('pdf-title')?.value||'forecast')
+    .replace(/[^a-zA-Z0-9_\- ]/g,'').replace(/\s+/g,'-').slice(0,40)||'forecast';
+}
+// Returns the handle written to, true for a download, or null if cancelled
+async function saveBlob(blob, suggestedName, description, mime, ext){
+  if(window.showSaveFilePicker){
+    try{
+      const handle=await window.showSaveFilePicker({suggestedName, types:[{description,accept:{[mime]:[ext]}}], startIn:'documents'});
+      const w=await handle.createWritable(); await w.write(blob); await w.close();
+      return handle;
+    }catch(e){ if(e.name!=='AbortError') throw e; return null; }
+  }
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob); a.download=suggestedName; a.click();
+  return true;
+}
+
+// The loaded programme with each heading's figures written in. Only the
+// `forecast` property of heading tasks is touched.
+function buildDoc(base){
+  const doc=JSON.parse(JSON.stringify(base));
+  const byId=new Map(allHeadings().map(h=>[h.id,h]));
+  const stamp=new Date().toISOString();
+  (doc.tasks||[]).forEach(t=>{
+    if(!t || t.type!=='heading' || !byId.has(t.id)) return;
+    const p=forecastPayload(byId.get(t.id));
+    if(p){ p.savedAt=stamp; t.forecast=p; } else delete t.forecast;
+  });
+  return doc;
+}
+
+async function exportJSON(){
+  if(!programmeDoc){
+    showMessage('Import the programme first', `<p>Figures are saved into the programme JSON from the Gantt tool. Import that file, then Save JSON.</p>`);
+    return;
+  }
+  try{
+    if(fileHandle){
+      let perm='granted';
+      if(fileHandle.queryPermission) perm=await fileHandle.queryPermission({mode:'readwrite'});
+      if(perm!=='granted' && fileHandle.requestPermission) perm=await fileHandle.requestPermission({mode:'readwrite'});
+      if(perm==='granted'){
+        // Never write over a newer programme: if the Gantt tool saved since
+        // this file was read, take its programme first, keeping our figures.
+        const before=await fileHandle.getFile();
+        if(before.lastModified!==fileStamp){
+          const d=JSON.parse(await readFileText(before));
+          if(Array.isArray(d.tasks) && programmeKey(d)!==programmeKey(programmeDoc)){
+            workdayOverrides = d.workdayOverrides ? {...d.workdayOverrides} : {};
+            const {list}=headingsFromGantt(d);
+            matchHeadings(list, allHeadings()).pairs.forEach((o,nh)=>applyFigures(nh, figuresOf(o)));
+            const keepSig=savedFiguresSig;
+            adoptProgramme(d, list, programmeSource, fileHandle, before.lastModified);
+            savedFiguresSig=keepSig;
+            flashStatus('The programme had changed in the Gantt tool. Its new dates were taken in before saving.');
+          } else programmeDoc=d;
+        }
+        const doc=buildDoc(programmeDoc);
+        const w=await fileHandle.createWritable();
+        await w.write(new Blob([JSON.stringify(doc,null,2)],{type:'application/json'}));
+        await w.close();
+        fileStamp=(await fileHandle.getFile()).lastModified;
+        afterSave(doc);
+        flashStatus(`✓ Saved into ${programmeSource}`);
+        return;
+      }
+    }
+    const doc=buildDoc(programmeDoc);
+    const r=await saveBlob(new Blob([JSON.stringify(doc,null,2)],{type:'application/json'}),
+      programmeSource||'programme.json','Programme JSON','application/json','.json');
+    if(!r) return;
+    if(r!==true){ fileHandle=r; programmeSource=r.name; fileStamp=(await r.getFile()).lastModified; }
+    afterSave(doc);
+    flashStatus(r===true ? `✓ Downloaded ${programmeSource}. Replace the original with it.` : `✓ Saved into ${programmeSource}`);
+  }catch(e){
+    showMessage('Could not save', `<p>${escHtml(e.message)}</p>`);
+  }
+}
+function afterSave(doc){
+  programmeDoc=doc;
+  const stamp=(doc.tasks||[]).find(t=>t&&t.forecast&&t.forecast.savedAt);
+  if(stamp) allHeadings().forEach(h=>h.savedAt=stamp.forecast.savedAt);
+  savedFiguresSig=figuresSig();
+  writeLocalCopy();
+  updateSaveMarker(); updateFileStatus();
+}
+window.addEventListener('beforeunload', e=>{ if(isDirty()){ e.preventDefault(); e.returnValue=''; } });
+
+// Three rows per heading (Budget, Invoiced, Actual), one column per week or
+// month (whichever is on screen), then the three totals rows. Plain
+// numbers so a spreadsheet can sum them.
+async function exportCSV(){
+  const fc=currentForecast||resolveBreakdown();
+  const mode=fc.mode;
+  const keys=new Set();
+  fc.rows.forEach(r=>{ [r.periods,r.inv,r.act].forEach(m=>m.forEach((p,k)=>{ if(p.cents||(p.act&&p.act.size)) keys.add(k); })); });
+  const sorted=[...keys].sort();
+  const all=[];
+  if(sorted.length){
+    let k=sorted[0];
+    for(let g=0; g<2000; g++){ all.push(k); if(k===sorted[sorted.length-1]) break; k=nextKey(k,mode); }
+  }
+  const field=v=>{ const s=String(v==null?'':v); return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; };
+  const num=c=>(c/100).toFixed(2);
+  const label=k=>mode==='billing'?`Invoice ${fmtDisplay(k)}`:`Wk ${weekNumberOf(k)??''} ${fmtDisplay(k)}`.trim();
+  const head=['Heading','Row','Start','End','Working days','Total fee','To date / invoiced','Remaining'].concat(all.map(label)).concat(['Actual invoices']);
+  const lines=[head.map(field).join(',')];
+  const cells=(m)=>all.map(k=>{ const p=m.get(k); return p&&(p.cents||(p.act&&p.act.size))?num(p.cents):''; });
+  fc.rows.forEach(r=>{
+    const sp=headingSpan(r.h);
+    const base=(row)=>[r.h.name, row, sp.start?fmtDisplay(sp.start):'', sp.end?fmtDisplay(sp.end):'', r.days, num(r.cents)];
+    lines.push(base('Budget').concat([num(r.budgetToDate),num(r.budgetRemaining)]).concat(cells(r.periods)).map(field).join(','));
+    lines.push(base('Remaining invoiced').concat(['',num(r.remTotal)]).concat(all.map(k=>{ const p=r.inv.get(k); return p&&p.freeCents?num(p.freeCents):''; })).map(field).join(','));
+    lines.push(base('Actual invoiced').concat([num(r.actToDate),'']).concat(cells(r.act))
+      .concat([(r.h.actuals||[]).map(a=>`${a.label?a.label+' ':''}${fmtDisplay(a.start)}-${fmtDisplay(a.end)} ${num(a.cents)}`).join('; ')]).map(field).join(','));
+  });
+  const tot=(row,a,b,m)=>lines.push(['Total',row,'','','',num(fc.totalFee),a==null?'':num(a),b==null?'':num(b)].concat(all.map(k=>num(m.get(k)||0))).map(field).join(','));
+  tot('Budget',fc.budgetToDate,fc.budgetRemaining,fc.totals);
+  tot('Remaining invoiced',null,fc.remTotal,fc.remTotals);
+  tot('Actual invoiced',fc.actToDate,null,fc.actTotals);
+  const blob=new Blob([lines.join('\r\n')],{type:'text/csv'});
+  if(await saveBlob(blob, exportBaseName()+'-'+mode+'-'+fmt(new Date())+'.csv','CSV spreadsheet','text/csv','.csv'))
+    flashStatus('✓ CSV saved ('+mode+')');
+}
+
+
+// ═══════════════════════════════════════════════════════
+//  GLOBAL SETTINGS: billing period
+// ═══════════════════════════════════════════════════════
+function readSettingsForm(){
+  return sanitiseBilling({freq:document.getElementById('set-freq').value,
+    day:+document.getElementById('set-day').value,
+    last:document.getElementById('set-last').checked});
+}
+function openSettings(){
+  document.getElementById('set-freq').value=billing.freq;
+  document.getElementById('set-day').value=billing.last?'':billing.day;
+  document.getElementById('set-last').checked=billing.last;
+  document.getElementById('settings-modal').style.display='flex';
+  onSettingsInput();
+}
+function closeSettings(){ document.getElementById('settings-modal').style.display='none'; }
+// Live preview: works the dates out with the form's values, then puts the
+// real setting back, so nothing changes until Apply.
+function onSettingsInput(){
+  const freq=document.getElementById('set-freq').value;
+  const dayEl=document.getElementById('set-day'), last=document.getElementById('set-last');
+  const max=freq==='fortnightly'?14:freq==='quarterly'?92:31;
+  dayEl.max=max;
+  document.getElementById('set-last-wrap').style.display=freq==='fortnightly'?'none':'flex';
+  document.getElementById('set-last-text').textContent=freq==='quarterly'?'Last day of the quarter':'Last day of the month';
+  if(freq==='fortnightly') last.checked=false;
+  dayEl.disabled=last.checked;
+  document.getElementById('set-day-label').textContent = freq==='fortnightly'?'Day of the fortnight (1 to 14)':freq==='quarterly'?'Day of the quarter (1 to 92)':'Day of the month (1 to 31)';
+  const a=billingAnchor();
+  document.getElementById('set-day-help').innerHTML = (freq==='fortnightly'
+      ? `Day 1 is Monday of week 1 (w/c ${fmtDisplay(fmt(a))}), the week counter in the chart header. Day 5 is Friday of week 1, day 12 is Friday of week 2.`
+      : freq==='quarterly'
+        ? 'Counted from the first day of each calendar quarter (1 Jan, 1 Apr, 1 Jul, 1 Oct). Day 15 is 15 Jan, 15 Apr, 15 Jul and 15 Oct.'
+        : 'A day past the end of a short month falls on its last day.')
+    + ' If the invoice day is not a working day, the invoice goes out on the last working day before it. Each billing period runs from the day after one invoice to the next invoice day, inclusive.';
+  if(!last.checked && !(+dayEl.value)) { document.getElementById('set-preview').textContent='Enter a day.'; return; }
+  const real=billing;
+  billing=readSettingsForm();
+  try{
+    const today=todayStr();
+    let k=periodKey(today,'billing'), lines=[];
+    for(let n=0;n<5;n++){
+      const b=periodBounds(k,'billing');
+      const d=parseDate(k);
+      const nom=nominalBillingDates(fmt(addDay(k,-100)),fmt(addDay(k,20))).find(x=>x>=k && workdayOnOrBefore(x)===k);
+      const why=nom&&nom!==k ? `  (${fmtDisplay(nom)} is ${nonWorkReason(nom)?.toLowerCase()||'not a working day'})` : '';
+      lines.push(`${d.toLocaleString('en-AU',{weekday:'short',day:'2-digit',month:'short',year:'numeric'})}  covers ${fmtDisplay(b.start)} to ${fmtDisplay(b.end)}${why}`);
+      k=nextKey(k,'billing');
+    }
+    document.getElementById('set-preview').innerHTML=lines.map(escHtml).join('<br>');
+  } finally { billing=real; _billCache.sig=''; }
+}
+function applySettings(){
+  const b=readSettingsForm();
+  if(!document.getElementById('set-last').checked && !(+document.getElementById('set-day').value)) return;
+  closeSettings();
+  if(JSON.stringify(b)===JSON.stringify(billing)) return;
+  billing=b; _billCache.sig='';
+  if(breakdownPref!=='billing'){ breakdownPref='billing'; }
+  refresh();
+  flashStatus(`Billing period: ${billingFreqName().toLowerCase()}, invoiced on ${billingDayText()}.`);
+}
+
+// Ctrl+Z belongs to the app unless a value is actually being typed. The old
+// check ignored Ctrl+Z whenever ANY input had focus, which after tabbing
+// between fee boxes (or straight after entering an invoice) was nearly
+// always, so undo seemed to do nothing.
+function appUndoAllowed(t){
+  if(!t || !(t.tagName==='INPUT'||t.tagName==='TEXTAREA'||t.tagName==='SELECT')) return true;
+  if(t.classList.contains('fee-input')) return t.value===(t.dataset.orig||'');
+  const pop=document.getElementById('ovr-popup');
+  if(pop.contains(t)) return !pop.classList.contains('visible');
+  return false;
+}
+
+// ═══════════════════════════════════════════════════════
+//  KEYBOARD
+// ═══════════════════════════════════════════════════════
+document.addEventListener('keydown',e=>{
+  const typing=e.target && (e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA');
+  if((e.ctrlKey||e.metaKey)&&e.key==='='){e.preventDefault();adjustZoom(4);}
+  if((e.ctrlKey||e.metaKey)&&e.key==='-'){e.preventDefault();adjustZoom(-4);}
+  const isUndo=(e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'&&!e.shiftKey;
+  const isRedo=(e.ctrlKey||e.metaKey)&&(e.key.toLowerCase()==='y'||(e.key.toLowerCase()==='z'&&e.shiftKey));
+  if((isUndo||isRedo) && appUndoAllowed(e.target)){
+    e.preventDefault();
+    if(e.target && e.target.blur && e.target!==document.body) e.target.blur();
+    isUndo ? undo() : redo();
+  }
+  if(e.key==='Escape'){ closeColorPicker(); closeCtx(); closeOverridePopup(); closeSettings(); }
+});
+
+// ═══════════════════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════════════════
+document.getElementById('zoom-val').value=pxPerDay;
+undoEnabled=false; refresh(); undoEnabled=true;
+syncScrollSetup();
+setupRowHover();
+updateUndoIndicator();
+
+// ═══════════════════════════════════════════════════════
+//  PDF EXPORT
+// ═══════════════════════════════════════════════════════
+function openPDFModal(){
+  document.getElementById('pdf-modal').style.display='flex';
+  document.getElementById('pdf-status').textContent='';
+  onPDFMethodChange();
+  updatePDFPreview();
+}
+function closePDFModal(){
+  document.getElementById('pdf-modal').style.display='none';
+}
+
+function openImageModal(){
+  document.getElementById('image-modal').style.display='flex';
+  document.getElementById('image-status').textContent='';
+}
+function closeImageModal(){
+  document.getElementById('image-modal').style.display='none';
+}
+
+async function exportImage(){
+  const statusEl=document.getElementById('image-status');
+  const btn=document.getElementById('image-go-btn');
+  const scale=parseInt(document.getElementById('image-scale').value)||2;
+
+  btn.disabled=true; btn.textContent='Loading…';
+  statusEl.textContent='Loading image library…';
+
+  try{
+    await loadScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js');
+  }catch(e){
+    statusEl.textContent='Failed to load image library. Check internet connection.';
+    btn.disabled=false; btn.textContent='Export Image';
+    return;
+  }
+
+  statusEl.textContent='Capturing full chart…';
+  btn.textContent='Capturing…';
+  await new Promise(r=>setTimeout(r,30)); // let the UI repaint before the heavy work
+
+  try{
+    const canvas=await captureChartCanvas(scale);
+
+    statusEl.textContent='Saving…';
+    btn.textContent='Saving…';
+
+    canvas.toBlob(async (blob)=>{
+      const suggestedName=exportBaseName()+'-'+fmt(new Date())+'.png';
+
+      if(window.showSaveFilePicker){
+        try{
+          const handle=await window.showSaveFilePicker({
+            suggestedName,
+            types:[{description:'PNG image',accept:{'image/png':['.png']}}],
+            startIn:'documents',
+          });
+          const w=await handle.createWritable();
+          await w.write(blob);
+          await w.close();
+        }catch(e){
+          if(e.name!=='AbortError') throw e;
+        }
+      } else {
+        const a=document.createElement('a');
+        a.href=URL.createObjectURL(blob);
+        a.download=suggestedName;
+        a.click();
+      }
+
+      statusEl.textContent='Done!';
+      btn.disabled=false; btn.textContent='Export Image';
+      closeImageModal();
+    },'image/png');
+
+  }catch(e){
+    console.error('Image export error:',e);
+    statusEl.textContent='Error: '+e.message;
+    btn.disabled=false; btn.textContent='Export Image';
+  }
+}
+
+
+// ═══════════════════════════════════════════════════════
+//  SHARED CHART CAPTURE
+//  One capture path for BOTH the image and the PDF export, so the two
+//  can never drift apart. Temporarily expands every clipping/scrolling
+//  container to its full natural content size, snapshots #main with
+//  html2canvas, then restores every style in a finally block.
+//  Requires html2canvas to be loaded already.
+// ═══════════════════════════════════════════════════════
+async function captureChartCanvas(scale){
+  const main=document.getElementById('main');
+  const restore=expandChartForExport();
+  try{
+    // Let layout settle before capturing
+    await new Promise(r=>setTimeout(r,50));
+
+    // Read the TRUE full size after expansion — this is what we tell
+    // html2canvas to render, overriding its default viewport-based
+    // assumptions so off-screen content is captured in full.
+    const fullWidth=main.scrollWidth;
+    const fullHeight=main.scrollHeight;
+
+    return await html2canvas(main,{
+      scale: scale,
+      backgroundColor:'#ffffff',
+      useCORS:true,
+      logging:false,
+      width: fullWidth,
+      height: fullHeight,
+      windowWidth: fullWidth,
+      windowHeight: fullHeight,
+      x: 0,
+      y: 0,
+      scrollX: 0,
+      scrollY: 0,
+    });
+  }finally{
+    restore();
+  }
+}
+
+// Expand every clipping/scrolling container to its full natural content
+// size so the WHOLE chart is available, not just the scrolled viewport.
+// Returns a restore function — always call it, in a finally block.
+// Used by BOTH exports: the raster capture and the print layout.
+function expandChartForExport(){
+  const docBody=document.body;
+  const main=document.getElementById('main');
+  const leftPanel=document.getElementById('left-panel');
+  const leftBody=document.getElementById('left-body');
+  const rightPanel=document.getElementById('right-panel');
+  const ganttBody=document.getElementById('gantt-body');
+  const ganttHeader=document.getElementById('gantt-header');
+
+  // Save original inline styles so we can restore them exactly afterward
+  const saved=[docBody,main,leftPanel,leftBody,rightPanel,ganttBody,ganttHeader].map(el=>({
+    el, overflow:el.style.overflow, overflowX:el.style.overflowX, overflowY:el.style.overflowY,
+    width:el.style.width, height:el.style.height, maxWidth:el.style.maxWidth
+  }));
+
+  // Natural full sizes
+  const leftBodyFullHeight=leftBody.scrollHeight;
+  const ganttBodyFullWidth=ganttBody.scrollWidth;
+  const ganttBodyFullHeight=ganttBody.scrollHeight;
+
+  // body{height:100vh;overflow:hidden} clips everything below the visible
+  // window at the document level — this must be lifted too, otherwise
+  // expanding #main and its children has no effect on what is captured.
+  docBody.style.overflow='visible';
+  docBody.style.height='auto';
+
+  main.style.overflow='visible';
+  leftPanel.style.overflow='visible';
+  leftBody.style.overflow='visible';
+  leftBody.style.height=leftBodyFullHeight+'px';
+  rightPanel.style.overflow='visible';
+  ganttBody.style.overflow='visible';
+  ganttBody.style.width=ganttBodyFullWidth+'px';
+  ganttBody.style.height=ganttBodyFullHeight+'px';
+  ganttHeader.style.overflow='visible';
+  ganttHeader.style.width=ganttBodyFullWidth+'px';
+
+  return function restore(){
+    saved.forEach(s=>{
+      s.el.style.overflow=s.overflow;
+      s.el.style.overflowX=s.overflowX;
+      s.el.style.overflowY=s.overflowY;
+      s.el.style.width=s.width;
+      s.el.style.height=s.height;
+      s.el.style.maxWidth=s.maxWidth;
+    });
+  };
+}
+
+function loadScript(url){
+  return new Promise((res,rej)=>{
+    if(document.querySelector(`script[src="${url}"]`)){res();return;}
+    const s=document.createElement('script');
+    s.src=url;s.onload=res;s.onerror=rej;
+    document.head.appendChild(s);
+  });
+}
+
+// Page dimensions in mm, stored landscape (wide x tall).
+const PDF_PAGE_MM={a0:[1189,841],a1:[841,594],a2:[594,420],a3:[420,297],a4:[297,210],letter:[279.4,215.9]};
+const PDF_MARGIN_MM=8;
+const MM_PER_PX=25.4/96;   // CSS pixel at the 96dpi the print box is laid out in
+
+function pdfPageDims(){
+  const key=document.getElementById('pdf-pagesize').value;
+  let [W,H]=PDF_PAGE_MM[key]||PDF_PAGE_MM.a4;
+  if(document.getElementById('pdf-orient').value==='portrait') [W,H]=[H,W];
+  return [W,H];
+}
+
+// The two methods do not offer the same options: tiling is a raster-only
+// idea, and the quality setting only means something when pixels are
+// being made. Hide what does not apply rather than letting it mislead.
+function onPDFMethodChange(){
+  const vector=document.getElementById('pdf-method').value==='vector';
+  const actual=document.getElementById('pdf-fit-actual');
+  const qSel=document.getElementById('pdf-quality');
+  const qLbl=document.getElementById('pdf-quality-label');
+  actual.hidden=vector;
+  actual.disabled=vector;
+  if(vector && document.getElementById('pdf-fit').value==='actual')
+    document.getElementById('pdf-fit').value='page';
+  qSel.style.display=vector?'none':'';
+  qLbl.style.display=vector?'none':'';
+  updatePDFPreview();
+}
+
+// How big the chart will actually come out on the chosen sheet.
+// A long programme reduced onto A3 prints at a scale where the task names
+// are unreadable, and there is no point finding that out at the printer.
+// This says so before exporting, and says what would fix it.
+const MIN_LEGIBLE_PT=6;
+
+function pdfFitInfo(){
+  const main=document.getElementById('main');
+  const ganttBody=document.getElementById('gantt-body');
+  // scrollWidth/Height already report full content size, but expanding
+  // first keeps this identical to what the export itself measures.
+  const restore=expandChartForExport();
+  const cW=main.scrollWidth, cH=main.scrollHeight, gW=ganttBody.scrollWidth;
+  restore();
+
+  const [PW,PH]=pdfPageDims();
+  const headerMM=(document.getElementById('pdf-title').value||'').trim()?11:0;
+  const availW=(PW-PDF_MARGIN_MM*2)/MM_PER_PX;
+  const availH=(PH-PDF_MARGIN_MM*2-headerMM)/MM_PER_PX;
+  const fit=document.getElementById('pdf-fit').value;
+  const k=fit==='width' ? availW/cW : Math.min(availW/cW, availH/cH);
+
+  const probe=document.querySelector('.heading-name');
+  const fontPx=probe ? parseFloat(getComputedStyle(probe).fontSize)||13 : 13;
+
+  return {cW,cH,gW,availW,availH,k,fontPx,pt:fontPx*k*0.75};
+}
+
+function updatePDFPreview(){
+  const el=document.getElementById('pdf-fit-preview');
+  if(!el || !document.querySelector('.heading-name')) return;
+  const fit=document.getElementById('pdf-fit').value;
+  const method=document.getElementById('pdf-method').value;
+
+  if(method==='image' && fit==='actual'){
+    el.style.color='#6b6860';
+    el.textContent='Actual size: the chart is tiled across as many sheets as needed, at on-screen size.';
+    return;
+  }
+
+  const f=pdfFitInfo();
+  const pct=Math.round(f.k*100);
+  const pt=Math.round(f.pt*10)/10;
+  const sheet=document.getElementById('pdf-pagesize').value.toUpperCase()+' '+
+              document.getElementById('pdf-orient').value;
+  let msg='Chart prints at '+pct+'% of on-screen size on '+sheet+
+          '. Heading names about '+pt+' pt.';
+
+  if(f.pt>=MIN_LEGIBLE_PT){
+    el.style.color='#4b5f3a';
+    el.textContent=msg;
+    return;
+  }
+
+  // Which of the sheets on offer would be readable
+  const orient=document.getElementById('pdf-orient').value;
+  const headerMM=(document.getElementById('pdf-title').value||'').trim()?11:0;
+  const readable=[];
+  for(const key of ['a4','a3','a2','a1','a0']){
+    let [W,H]=PDF_PAGE_MM[key];
+    if(orient==='portrait') [W,H]=[H,W];
+    const aW=(W-PDF_MARGIN_MM*2)/MM_PER_PX;
+    const aH=(H-PDF_MARGIN_MM*2-headerMM)/MM_PER_PX;
+    const kk=fit==='width' ? aW/f.cW : Math.min(aW/f.cW, aH/f.cH);
+    if(f.fontPx*kk*0.75>=MIN_LEGIBLE_PT) readable.push(key.toUpperCase());
+  }
+
+  // Or the zoom that would make the current sheet work
+  const kNeeded=MIN_LEGIBLE_PT/(f.fontPx*0.75);
+  const leftW=f.cW-f.gW;
+  const newPx=Math.floor(pxPerDay*((f.availW/kNeeded)-leftW)/f.gW);
+
+  msg+=' Too small to read.';
+  if(readable.length){
+    msg+=' Readable from '+readable[0]+' up';
+    if(newPx>=2) msg+=', or drop zoom to about '+newPx+' px/day for this sheet.';
+    else msg+='.';
+  } else {
+    msg+=' No sheet size on offer is readable at this zoom.';
+    if(newPx>=2) msg+=' Drop zoom to about '+newPx+' px/day for this sheet.';
+    else msg+=' This programme is too long to issue readably on one sheet — split it by stage, or switch to monthly.';
+  }
+  el.style.color='#a14a1e';
+  el.textContent=msg;
+}
+
+function exportPDF(){
+  return document.getElementById('pdf-method').value==='vector'
+    ? exportPDFVector()
+    : exportPDFImage();
+}
+
+// Set the moment a vector export starts, before any await. Checking for
+// the wrapper element is not enough: two clicks in the same tick both get
+// past that check before either has built one.
+let printLayoutActive=false;
+
+// ── Vector PDF ──────────────────────────────────────────────────────
+// Prints the live DOM through the browser, which produces real vector
+// geometry and embedded, selectable text. No second renderer exists, so
+// there is nothing that can drift from what is on screen. The chart is
+// scaled with a CSS transform, which the print pipeline resolves in
+// vector space — it does not rasterise.
+async function exportPDFVector(){
+  const statusEl=document.getElementById('pdf-status');
+  const btn=document.getElementById('pdf-go-btn');
+  const fitMode=document.getElementById('pdf-fit').value==='width'?'width':'page';
+  const titleText=(document.getElementById('pdf-title').value||'').trim();
+  const [PW,PH]=pdfPageDims();
+
+  btn.disabled=true; btn.textContent='Preparing…';
+  statusEl.textContent='Preparing print layout…';
+  await new Promise(r=>setTimeout(r,30));
+
+  const main=document.getElementById('main');
+  const header=document.getElementById('print-header');
+
+  // Refuse to start a second print layout on top of a live one. Without
+  // this, a double click (or an export fired before the previous one has
+  // torn down) tries to re-parent #main while it is already inside a
+  // wrapper, which throws and leaves the chart stranded there.
+  if(printLayoutActive || document.getElementById('print-wrap')){
+    statusEl.textContent='A print layout is already being prepared.';
+    return;
+  }
+  printLayoutActive=true;
+
+  const restoreExpand=expandChartForExport();
+
+  let wrap=null, pageStyle=null;
+  // Remember where #main lives so it can be put back exactly, rather than
+  // relying on a marker node that teardown might not still own.
+  const origParent=main.parentNode, origNext=main.nextSibling;
+  const savedMain={transform:main.style.transform,transformOrigin:main.style.transformOrigin,
+                   width:main.style.width,height:main.style.height};
+
+  function cleanup(){
+    printLayoutActive=false;
+    document.body.classList.remove('printing');
+    if(wrap){
+      origParent.insertBefore(main, origNext);
+      wrap.remove();
+    }
+    main.style.transform=savedMain.transform;
+    main.style.transformOrigin=savedMain.transformOrigin;
+    main.style.width=savedMain.width;
+    main.style.height=savedMain.height;
+    header.innerHTML='';
+    if(pageStyle) pageStyle.remove();
+    restoreExpand();
+    btn.disabled=false; btn.textContent='Export PDF';
+  }
+
+  try{
+    await new Promise(r=>setTimeout(r,50));   // let the expansion settle
+
+    const contentW=main.scrollWidth;
+    const contentH=main.scrollHeight;
+
+    // Printable area, in CSS px, for the chosen sheet
+    const headerMM=titleText?11:0;
+    const availWpx=(PW-PDF_MARGIN_MM*2)/MM_PER_PX;
+    const availHpx=(PH-PDF_MARGIN_MM*2-headerMM)/MM_PER_PX;
+
+    // 'page'  — whole chart on one sheet
+    // 'width' — fill the sheet width, continue onto further sheets
+    const k = fitMode==='width'
+      ? availWpx/contentW
+      : Math.min(availWpx/contentW, availHpx/contentH);
+
+    if(titleText){
+      header.innerHTML='<div style="font-family:var(--font);font-size:13px;font-weight:700;color:#1e1e1e">'
+        +escHtml(titleText)
+        +'</div><div style="font-family:var(--font);font-size:9px;color:#6b6860;margin-top:2px">'
+        +fmtDisplay(fmt(new Date()))+'</div>';
+    }
+
+    // The transform does not change layout size, so the chart is put in a
+    // wrapper sized to the SCALED result. Without this the browser would
+    // paginate against the unscaled height and emit blank sheets.
+    wrap=document.createElement('div');
+    wrap.id='print-wrap';
+    const scaledW=Math.ceil(contentW*k), scaledH=Math.ceil(contentH*k);
+    wrap.style.width=scaledW+'px';
+    wrap.style.height=scaledH+'px';
+    // A wide programme reduced onto one sheet occupies a band, so centre
+    // it. Multi-sheet output stays at the top-left corner, because the
+    // sheets are meant to be read as a continuous run.
+    if(fitMode==='page'){
+      wrap.style.marginLeft='auto';
+      wrap.style.marginRight='auto';
+      wrap.style.marginTop=Math.max(0,Math.round((availHpx-scaledH)/2))+'px';
+    }
+    origParent.insertBefore(wrap, main);   // wrapper takes #main's place
+    wrap.appendChild(main);
+
+    main.style.width=contentW+'px';
+    main.style.height=contentH+'px';
+    main.style.transformOrigin='top left';
+    main.style.transform='scale('+k+')';
+
+    pageStyle=document.createElement('style');
+    pageStyle.id='print-page-style';
+    pageStyle.textContent='@page{size:'+PW+'mm '+PH+'mm;margin:'+PDF_MARGIN_MM+'mm}';
+    document.head.appendChild(pageStyle);
+
+    document.body.classList.add('printing');
+    statusEl.textContent='Opening print dialogue. Choose "Save as PDF".';
+    closePDFModal();
+
+    await new Promise(r=>setTimeout(r,60));  // let the print layout settle
+    window.print();
+  }catch(e){
+    console.error('Vector PDF error:',e);
+    statusEl.textContent='Error: '+e.message;
+  }finally{
+    // window.print() blocks until the dialogue closes in Chrome/Edge, but
+    // not everywhere, so restore on afterprint as well and make cleanup
+    // safe to run twice.
+    let done=false;
+    const once=()=>{ if(done) return; done=true; cleanup(); };
+    window.addEventListener('afterprint', once, {once:true});
+    setTimeout(once, 300);
+  }
+}
+
+// ── Raster PDF (exact on-screen copy) ───────────────────────────────
+async function exportPDFImage(){
+  const statusEl=document.getElementById('pdf-status');
+  const btn=document.getElementById('pdf-go-btn');
+  btn.disabled=true; btn.textContent='Loading…';
+  statusEl.textContent='Loading libraries…';
+
+  try{
+    await loadScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js');
+    await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
+  }catch(e){
+    statusEl.textContent='Failed to load export libraries. Check internet connection.';
+    btn.disabled=false; btn.textContent='Export PDF';
+    return;
+  }
+
+  const opts={
+    pageSizeKey: document.getElementById('pdf-pagesize').value,
+    orientation: document.getElementById('pdf-orient').value,
+    fitMode:     document.getElementById('pdf-fit').value,
+    titleText:   (document.getElementById('pdf-title').value||'').trim(),
+    quality:     Math.max(1,Math.min(4,parseInt(document.getElementById('pdf-quality').value)||2)),
+  };
+
+  statusEl.textContent='Capturing chart…';
+  btn.textContent='Capturing…';
+  await new Promise(r=>setTimeout(r,30)); // let the UI repaint before the heavy work
+
+  try{
+    const canvas=await captureChartCanvas(opts.quality);
+
+    statusEl.textContent='Building PDF…';
+    btn.textContent='Building…';
+    await new Promise(r=>setTimeout(r,30));
+
+    buildPDFFromCanvas(canvas,opts);
+
+    statusEl.textContent='Done!';
+    btn.disabled=false; btn.textContent='Export PDF';
+    closePDFModal();
+  }catch(e){
+    console.error('PDF export error:',e);
+    statusEl.textContent='Error: '+e.message;
+    btn.disabled=false; btn.textContent='Export PDF';
+  }
+}
+
+// Paginate the captured chart image into a PDF.
+//  fitMode 'page'   — whole chart scaled down onto a single page
+//  fitMode 'width'  — scaled to page width, continued down further pages
+//  fitMode 'actual' — on-screen size, tiled across a grid of pages
+function buildPDFFromCanvas(canvas,opts){
+  const { jsPDF }=window.jspdf;
+  let [PW,PH]=PDF_PAGE_MM[opts.pageSizeKey]||PDF_PAGE_MM.a4;   // stored landscape
+  if(opts.orientation==='portrait') [PW,PH]=[PH,PW];
+
+  const pdf=new jsPDF({orientation:opts.orientation,unit:'mm',format:[PW,PH]});
+
+  const MARGIN=PDF_MARGIN_MM;
+  const titleH=opts.titleText?9:0;
+  const footH=5;
+  const availW=PW-MARGIN*2;
+  const availH=PH-MARGIN*2-titleH-footH;
+
+  const imgW=canvas.width, imgH=canvas.height;
+
+  // mm per captured pixel. The capture is `quality`x CSS pixels, and a
+  // CSS pixel is 25.4/96 mm, so actual size = (25.4/96)/quality.
+  let mmPerPx;
+  if(opts.fitMode==='page')       mmPerPx=Math.min(availW/imgW, availH/imgH);
+  else if(opts.fitMode==='width') mmPerPx=availW/imgW;
+  else                            mmPerPx=(25.4/96)/opts.quality;
+
+  // Pixels of source image that fit on one page
+  const sliceW=Math.max(1,Math.floor(availW/mmPerPx));
+  const sliceH=Math.max(1,Math.floor(availH/mmPerPx));
+  const cols=Math.max(1,Math.ceil(imgW/sliceW));
+  const rows=Math.max(1,Math.ceil(imgH/sliceH));
+  const totalPages=cols*rows;
+
+  const tile=document.createElement('canvas');
+  const tctx=tile.getContext('2d');
+  let pageNo=0;
+
+  for(let r=0;r<rows;r++){
+    for(let c=0;c<cols;c++){
+      const sx=c*sliceW, sy=r*sliceH;
+      const sw=Math.min(sliceW, imgW-sx);
+      const sh=Math.min(sliceH, imgH-sy);
+      if(sw<=0||sh<=0) continue;
+
+      pageNo++;
+      if(pageNo>1) pdf.addPage([PW,PH],opts.orientation);
+
+      tile.width=sw; tile.height=sh;
+      tctx.fillStyle='#ffffff';
+      tctx.fillRect(0,0,sw,sh);
+      tctx.drawImage(canvas, sx,sy,sw,sh, 0,0,sw,sh);
+
+      if(opts.titleText){
+        pdf.setFont('helvetica','bold');
+        pdf.setFontSize(11);
+        pdf.setTextColor(30,30,30);
+        pdf.text(opts.titleText, MARGIN, MARGIN+5);
+      }
+
+      const drawW=sw*mmPerPx, drawH=sh*mmPerPx;
+      // On a single-page export the chart is usually much wider than it
+      // is tall, so it would otherwise sit as a thin band in the top
+      // corner. Centre it. Tiled pages must stay flush to the margin or
+      // the pieces will not line up when printed and laid side by side.
+      const drawX=(opts.fitMode==='page') ? MARGIN+(availW-drawW)/2 : MARGIN;
+      const drawY=(opts.fitMode==='page') ? MARGIN+titleH+(availH-drawH)/2 : MARGIN+titleH;
+
+      pdf.addImage(tile.toDataURL('image/png'),'PNG',
+                   drawX, drawY, drawW, drawH,
+                   undefined,'FAST');
+
+      if(totalPages>1||opts.titleText){
+        pdf.setFont('helvetica','normal');
+        pdf.setFontSize(8);
+        pdf.setTextColor(120,120,120);
+        const label=totalPages>1
+          ? 'Page '+pageNo+' of '+totalPages+'  (row '+(r+1)+', column '+(c+1)+')'
+          : fmtDisplay(fmt(new Date()));
+        pdf.text(label, PW-MARGIN, PH-MARGIN, {align:'right'});
+      }
+    }
+  }
+
+  pdf.save(exportBaseName()+'-'+fmt(new Date())+'.pdf');
+}
+</script>
+</body>
+</html>
