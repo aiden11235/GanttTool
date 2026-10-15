@@ -186,6 +186,14 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
 .tc-rem{font-weight:700;min-height:12px}
 .tc-act{font-weight:700;color:var(--text);background:#fff;border:1px solid var(--border-strong);border-radius:2px;padding:0 3px;font-size:9.5px}
 .tc-act.empty{visibility:hidden}
+/* Resourcing summary in the header: one 18px strip per person */
+.gantt-totals-row.res-sum-row{height:18px;border-top:1px solid var(--border)}
+.gantt-totals-row.res-sum-row.first{border-top:1px solid var(--border-strong)}
+.left-totals.res-sum{height:18px;border-top:1px solid var(--border)}
+.left-totals.res-sum.first{border-top:1px solid var(--border-strong)}
+.load-cell{font-size:9px;font-weight:600;border-right:1px solid var(--border)}
+.res-sum-name{font-size:11px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.res-sum .lt-total{font-size:10px}
 
 #gantt-body{flex:1;overflow:auto;position:relative}
 #gantt-canvas-wrap{position:relative}
@@ -330,6 +338,19 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
 #hrs-popup input:focus{outline:none;border-color:#3b82f6}
 #hrs-popup input.invalid{border-color:#dc2626;background:#fee2e2}
 #hrs-popup .hp-unit{font-size:12px;color:var(--text-muted);width:34px}
+#hrs-popup .hp-dates{display:flex;gap:8px;margin-bottom:8px}
+#hrs-popup .hp-dates label{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text-muted);flex:1;min-width:0}
+#hrs-popup .hp-date{position:relative;display:flex;flex:1;min-width:0}
+#hrs-popup .hp-dates input{flex:1;min-width:0;padding:4px 22px 4px 6px;font-size:12px;text-align:left;font-family:var(--font-mono)}
+#hrs-popup .hp-cal{position:absolute;right:2px;top:50%;transform:translateY(-50%);border:none;background:none;color:var(--text-muted);cursor:pointer;font-size:12px;padding:2px 4px}
+#hrs-popup .hp-cal:hover{color:var(--accent)}
+#hrs-popup input.hp-native{position:absolute;right:0;bottom:0;width:1px;height:1px;opacity:0;pointer-events:none;border:none;padding:0}
+#hrs-popup{width:330px}
+.res-ghost.low{top:22px;bottom:3px;height:auto;display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--accent)}
+.res-act-box{cursor:grab}
+.res-act-box.dragging{opacity:.75;z-index:20;cursor:grabbing}
+.res-act-box .res-h{width:4px;background:transparent}
+.res-act-box .res-h:hover{background:rgba(0,0,0,.08)}
 #hrs-popup .hp-units{display:flex;border:1px solid #c8c4bc;border-radius:4px;overflow:hidden;flex:none}
 #hrs-popup .hp-units button{border:none;background:#fff;color:var(--text-muted);font-size:11px;font-family:var(--font);padding:6px 8px;cursor:pointer}
 #hrs-popup .hp-units button+button{border-left:1px solid #c8c4bc}
@@ -436,6 +457,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
       </div>
       <div id="left-totals-b" class="left-totals tall"></div>
       <div id="left-totals-i" class="left-totals tall"></div>
+      <div id="left-totals-r"></div>
       <div id="name-col-resize" class="col-resize-grip" title="Drag to resize Heading column"></div>
     </div>
     <div id="left-body"></div>
@@ -511,6 +533,10 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
 <div id="hrs-popup">
   <div class="op-title" id="hp-title"></div>
   <div class="op-sub" id="hp-sub"></div>
+  <div class="hp-dates" id="hp-dates">
+    <label>From<span class="hp-date"><input id="hp-start" type="text" placeholder="dd/mm/yyyy" autocomplete="off" spellcheck="false"><button type="button" class="hp-cal" tabindex="-1" title="Pick a date" onmousedown="event.preventDefault()" onclick="openDatePicker('hp-start')">▦</button><input type="date" class="hp-native" id="hp-start-native" tabindex="-1" aria-hidden="true"></span></label>
+    <label>to<span class="hp-date"><input id="hp-end" type="text" placeholder="dd/mm/yyyy" autocomplete="off" spellcheck="false"><button type="button" class="hp-cal" tabindex="-1" title="Pick a date" onmousedown="event.preventDefault()" onclick="openDatePicker('hp-end')">▦</button><input type="date" class="hp-native" id="hp-end-native" tabindex="-1" aria-hidden="true"></span></label>
+  </div>
   <div class="hp-row">
     <div class="hp-units" title="Enter the time in hours or days. Days use the hours per day in Settings.">
       <button type="button" id="hp-uh" tabindex="-1" onmousedown="event.preventDefault()" onclick="setHpUnit('h',true)">Hours</button><button type="button" id="hp-ud" tabindex="-1" onmousedown="event.preventDefault()" onclick="setHpUnit('d',true)">Days</button>
@@ -949,7 +975,7 @@ function sanitiseResources(list){
             .map(b=>isFinite(+b.dpw)&&b.dpw!=null ? {start:b.start, end:b.end, dpw:r2(b.dpw)} : {start:b.start, end:b.end, hpw:r2(b.hpw)})
             .sort((x,y)=>x.start<y.start?-1:1),
     actuals: (Array.isArray(r.actuals)?r.actuals:[]).filter(a=>a&&isoDate(a.start)&&isoDate(a.end)&&(isFinite(+a.hours)&&a.hours!=null || isFinite(+a.days)&&a.days!=null))
-            .map(a=>{ const o={start:a.start, end:a.end}; if(a.days!=null&&isFinite(+a.days)) o.days=r2(a.days); else o.hours=r2(a.hours); o.mode=a.mode==='billing'?'billing':'weekly'; return o; })
+            .map(a=>{ const o={start:a.start, end:a.end}; if(a.days!=null&&isFinite(+a.days)) o.days=r2(a.days); else o.hours=r2(a.hours); o.mode=['billing','custom'].includes(a.mode)?a.mode:'weekly'; return o; })
             .sort((x,y)=>x.start<y.start?-1:x.start>y.start?1:0)
   }));
 }
@@ -1252,6 +1278,37 @@ function resourceCalc(res, mode, today){
 const HRS=new Intl.NumberFormat('en-AU',{maximumFractionDigits:1});
 function fmtHours(h){ return HRS.format(Math.round((+h||0)*10)/10)+' h'; }
 
+// Resourcing summary for the header: each person's hours per period across
+// ALL headings. A person is matched by name (case and spacing ignored), or
+// by position where no name is given, so "AM" on two stages is one row.
+function personKey(res){
+  const n=String(res.name||'').trim().toLowerCase().replace(/\s+/g,' ');
+  const p=String(res.position||'').trim().toLowerCase().replace(/\s+/g,' ');
+  return n ? 'n:'+n : p ? 'p:'+p : '';
+}
+function resourceSummary(rows){
+  const by=new Map();
+  rows.forEach(r=>r.res.forEach(rc=>{
+    const key=personKey(rc.res); if(!key) return;
+    let pp=by.get(key);
+    if(!pp){ pp={key, res:rc.res, periods:new Map(), total:0}; by.set(key,pp); }
+    rc.periods.forEach((p,k)=>{
+      if(!p.hours) return;
+      let q=pp.periods.get(k); if(!q){ q={hours:0, by:[]}; pp.periods.set(k,q); }
+      q.hours+=p.hours; q.by.push({h:r.h, hours:p.hours, actH:p.actH});
+      pp.total+=p.hours;
+    });
+  }));
+  return [...by.values()].filter(pp=>pp.total>0);
+}
+// Time load: under a day in hours ("6 h"), a day or more in days to 1 dp ("3.0 d")
+function fmtLoad(h){
+  h=+h||0;
+  if(h<=1e-9) return '';
+  if(h < hoursPerDay-1e-9) return fmtHours(h);
+  return (Math.round(h/hoursPerDay*10)/10).toFixed(1)+' d';
+}
+
 function buildForecast(mode){
   const today=todayStr();
   const budgetTotals=new Map(), invTotals=new Map(), actTotals=new Map(), remTotals=new Map(), resTotals=new Map();
@@ -1304,7 +1361,7 @@ function buildForecast(mode){
             remTotal:a.C-a.actualSum};
   });
   const sum=(f)=>rows.reduce((s,r)=>s+f(r),0);
-  return {mode, rows, totals:budgetTotals, invTotals, actTotals, remTotals, resTotals, totalFee, unallocated,
+  return {mode, rows, people:resourceSummary(rows), totals:budgetTotals, invTotals, actTotals, remTotals, resTotals, totalFee, unallocated,
     resToDate:sum(r=>r.resToDate), resRemaining:sum(r=>r.resRemaining),
     remTotal:sum(r=>r.remTotal),
     budgetToDate:sum(r=>r.budgetToDate), budgetRemaining:sum(r=>r.budgetRemaining),
@@ -1331,6 +1388,7 @@ function overrideState(h, p, key, mode){
 // ── Text measuring, so the weekly/monthly decision is made on real widths
 const LABEL_FONT_PX=9, LABEL_WEIGHT=600;
 const TOTAL_FONT_PX=10, TOTAL_WEIGHT=700;
+const LOAD_FONT_PX=9, LOAD_WEIGHT=600;   // resourcing summary in the header
 const LABEL_PAD=8;   // breathing room inside a period, total
 let _measureCtx=null;
 function textWidth(str, px, weight){
@@ -1353,6 +1411,7 @@ function resolveBreakdown(){
     r.inv.forEach(p=>fit(p.freeCents,LABEL_FONT_PX,LABEL_WEIGHT));
     r.resPeriods.forEach(p=>fit(Math.round(p.cents),TOTAL_FONT_PX,TOTAL_WEIGHT));
   });
+  weekly.people.forEach(pp=>pp.periods.forEach(q=>{ maxW=Math.max(maxW,textWidth(fmtLoad(q.hours),LOAD_FONT_PX,LOAD_WEIGHT)); }));
   [weekly.totals,weekly.remTotals,weekly.actTotals].forEach(m=>m.forEach(c=>fit(c,TOTAL_FONT_PX,TOTAL_WEIGHT)));
   weeklyMinZoom = maxW ? Math.ceil((maxW+LABEL_PAD)/7) : 0;
   const fits = (maxW+LABEL_PAD) <= 7*pxPerDay;
@@ -1597,6 +1656,13 @@ function renderLeftTotals(fc){
   strip('left-totals-i',
     bad?`<span class="lt-warn">⚠ ${bad} heading${bad!==1?'s':''} cannot balance to the fee</span>`:'',
     'Invoicing', splitCell(fc.actToDate,fc.remTotal,'Invoiced to date, all headings','Still to be invoiced, all headings'));
+  // Resourcing summary: one strip per person, matching the chart header rows
+  const host=document.getElementById('left-totals-r');
+  host.innerHTML=fc.people.map((pp,n)=>`<div class="left-totals res-sum${n===0?' first':''}">${blank}
+      <div class="lt-cell"><span class="res-sum-name" title="${escHtml(resLabel(pp.res))}">${escHtml(resLabel(pp.res))}</span></div>
+      <div class="lt-cell">${n===0?'<span class="lt-title">Resourcing</span>':''}</div>
+      <div class="lt-cell lt-total" title="Total time across all headings and periods">${fmtLoad(pp.total)}</div>
+      <div class="lt-cell"></div></div>`).join('');
 }
 
 function overallSpan(){
@@ -1753,6 +1819,31 @@ function renderGanttHeader(minD,maxD,totalPx,fc) {
     });
     wrap.appendChild(tr);
   });
+  // Resourcing summary: one row per person, their time across every heading
+  fc.people.forEach((pp,n)=>{
+    const tr=document.createElement('div'); tr.className='gantt-totals-row res-sum-row'+(n===0?' first':'');
+    tr.dataset.kind='p'; tr.dataset.key=pp.key;
+    tr.style.width=(totalPx+200)+'px';
+    periods.forEach(p=>{
+      const q=pp.periods.get(p.key); if(!q || q.hours<=1e-9) return;
+      const cell=document.createElement('div'); cell.className='total-cell load-cell';
+      cell.dataset.key=p.key;
+      cell.style.left=p.x0+'px'; cell.style.width=(p.x1-p.x0)+'px';
+      const t=fmtLoad(q.hours);
+      cell.textContent = textWidth(t,LOAD_FONT_PX,LOAD_WEIGHT)+4<=p.x1-p.x0 ? t : '';
+      attachTip(cell,()=>loadTip(pp,p,fc.mode));
+      tr.appendChild(cell);
+    });
+    wrap.appendChild(tr);
+  });
+}
+function loadTip(pp,p,mode){
+  const q=pp.periods.get(p.key);
+  let html=`<strong>${escHtml(resLabel(pp.res))}</strong>, ${escHtml(periodName(p.key,mode,true))}<br>${fmtDisplay(p.start)} to ${fmtDisplay(p.end)}`
+    +`<br><strong>${fmtLoad(q.hours)}</strong> <span style="opacity:.75">(${fmtHours(q.hours)} at ${fmtNum(hoursPerDay)} h/day)</span>`;
+  html+=`<div style="margin-top:4px;border-top:1px solid #334155;padding-top:4px">`;
+  q.by.forEach(x=>{ html+=`<div class="tt-row"><span><span class="tt-dot" style="background:${x.h.color}"></span>${escHtml(x.h.name)}${x.actH?' <span style="opacity:.6">(actual)</span>':''}</span><span>${fmtLoad(x.hours)}</span></div>`; });
+  return html+`</div><div style="opacity:.6;font-size:10px">All headings. Actual time where entered, otherwise the plan.</div>`;
 }
 
 function rowMap(r,kind){ return kind==='b'?r.periods:kind==='i'?r.inv:r.act; }
@@ -2542,7 +2633,13 @@ function drawResourceRow(r, i, spec, mode){
     box.style.border=`1px solid ${h.color}`; box.style.color=h.color;
     const opts=[actText(a), fmtNum(actVal(a).v)];
     box.textContent=opts.find(t=>textWidth(t,9,700)<=w-5)||'';
-    box.addEventListener('click',e=>{ e.stopPropagation(); openResActualEdit(e,i,k,ai); });
+    const hl=document.createElement('div'); hl.className='res-h res-hl'; hl.title='Drag to change the start';
+    const hr=document.createElement('div'); hr.className='res-h res-hr'; hr.title='Drag to change the end';
+    box.appendChild(hl); box.appendChild(hr);
+    hl.addEventListener('mousedown',e=>startResActDrag(e,i,k,ai,'l',box));
+    hr.addEventListener('mousedown',e=>startResActDrag(e,i,k,ai,'r',box));
+    box.addEventListener('mousedown',e=>{ if(!e.target.classList.contains('res-h')) startResActDrag(e,i,k,ai,'move',box); });
+    box.addEventListener('click',e=>e.stopPropagation());   // the row's own click adds a new entry
     box.addEventListener('contextmenu',e=>{ e.preventDefault(); e.stopPropagation(); openResActMenu(e,i,k,ai); });
     attachTip(box,()=>{
       const plan=plannedHours(res,a.start,a.end);
@@ -2551,7 +2648,7 @@ function drawResourceRow(r, i, spec, mode){
         +`<br>For ${fmtDisplay(a.start)} to ${fmtDisplay(a.end)}`
         +`<br>${money2(Math.round(H*res.rate*100))} at ${money2(Math.round(res.rate*100))}/hr`
         +`<br><span style="opacity:.75">Planned for these dates: ${fmtHours(plan)} (replaced)</span>`
-        +`<br><span style="opacity:.6;font-style:italic">Click to change, right-click for options</span>`;
+        +`<br><span style="opacity:.6;font-style:italic">Click to change, drag to move, drag the ends to stretch, right-click for options</span>`;
     });
     row.appendChild(box);
   });
@@ -2619,7 +2716,7 @@ function attachResHover(row){
   let box=null;
   row.addEventListener('mousemove', e=>{
     const onEmpty = e.target===row || e.target.classList.contains('res-hover');
-    if(!onEmpty || resDrawing){ if(box) box.style.display='none'; return; }
+    if(!onEmpty || resDrawing || hrsCfg){ if(box) box.style.display='none'; return; }
     const rect=row.getBoundingClientRect(), x=e.clientX-rect.left, y=e.clientY-rect.top;
     const key=periodKey(dateAtX(x),breakdownView), b=periodBounds(key,breakdownView);
     const x0=Math.max(0,xForDate(b.start)), x1=Math.min(ganttTotalPx,xForDate(b.next));
@@ -2675,14 +2772,23 @@ function startResDraw(e, i, k, row){
     }
     if(s>en){ ghost.remove(); return; }
     paint();
-    const def=newBarDefault(res);
-    openHoursPopup({x:me.clientX, y:me.clientY,
-      title:resLabel(res,'New bar'), sub:`Time per week, ${fmtDisplay(s)} to ${fmtDisplay(en)}`, value:def.v, unit:def.unit, perWeek:true,
-      hint:v=>barHint(res,s,en,v),
-      onApply:(v,u)=>{ res.bars.push(makeBar(s,en,v,u)); res.bars.sort((a,b)=>a.start<b.start?-1:1); refresh(); },
-      onClose:()=>ghost.remove()});
+    newBarPopup(me, i, k, s, en, {el:ghost});
   };
   document.addEventListener('mousemove',onMove); document.addEventListener('mouseup',onUp);
+}
+// Bars in one row run in series: a range may not overlap another bar
+function barOverlap(res, s, e, skip){
+  const o=res.bars.find((b,bi)=>bi!==skip && b.start<=e && b.end>=s);
+  return o ? `Overlaps the bar from ${fmtDisplay(o.start)} to ${fmtDisplay(o.end)}. Bars in one row run one after another.` : '';
+}
+function newBarPopup(e, i, k, s, en, ghost){
+  const res=headings[i].resources[k], def=newBarDefault(res);
+  openHoursPopup({x:e.clientX, y:e.clientY,
+    title:resLabel(res,'New bar'), sub:'Time per week for these dates', value:def.v, unit:def.unit, perWeek:true,
+    dates:{start:s,end:en}, ghost: ghost || {rk:`${i}p${k}`, band:'top'},
+    validate:(a,z)=>barOverlap(res,a,z,-1),
+    hint:(v,a,z)=>barHint(res,a,z,v),
+    onApply:(v,u,a,z)=>{ res.bars.push(makeBar(a,z,v,u)); res.bars.sort((x,y)=>x.start<y.start?-1:1); refresh(); }});
 }
 function barHint(res,s,en,v){
   const wd=workdaysInRange(parseDate(s),parseDate(en));
@@ -2745,13 +2851,21 @@ function editResBar(e, i, k, bi){
   const cur=barVal(b);
   openHoursPopup({x:e.clientX, y:e.clientY,
     title:resLabel(res,'Resource'),
-    sub: split ? `Time per week from ${fmtDisplay(from)} to ${fmtDisplay(b.end)}` : `Time per week, ${fmtDisplay(b.start)} to ${fmtDisplay(b.end)}`,
+    sub: split ? `Time per week. Before ${fmtDisplay(from)} the bar is covered by actual time and keeps ${barText(b)}.` : 'Time per week for these dates',
     value:fmtNum(cur.v), unit:cur.unit, perWeek:true,
-    hint:v=>(split?`Before ${fmtDisplay(from)} the bar is covered by actual hours and keeps ${barText(b)}. `:'')+barHint(res,from,b.end,v),
-    onApply:(v,u)=>{
-      if(v===cur.v && u===cur.unit) return;
-      if(split) res.bars.splice(bi,1,{...b,end:fmt(addDay(from,-1))},makeBar(from,b.end,v,u));
-      else res.bars.splice(bi,1,makeBar(b.start,b.end,v,u));
+    dates:{start:from,end:b.end}, ghost:{rk:`${i}p${k}`, band:'top', onlyIfChanged:true},
+    validate:(a,z)=>barOverlap(res,a,z,bi),
+    hint:(v,a,z)=>barHint(res,a,z,v),
+    onApply:(v,u,a,z)=>{
+      if(v===cur.v && u===cur.unit && a===from && z===b.end) return;
+      const out=[];
+      if(split && a>b.start){
+        // Change from a date on: the part before keeps its figure, as does any part after
+        out.push({...b,end:fmt(addDay(a,-1))}, makeBar(a,z,v,u));
+        if(z<b.end) out.push({...b,start:fmt(addDay(z,1))});
+      } else out.push(makeBar(a,z,v,u));
+      res.bars.splice(bi,1,...out);
+      res.bars.sort((x,y)=>x.start<y.start?-1:1);
       refresh();
     },
     removeLabel:'Remove bar',
@@ -2781,29 +2895,68 @@ function openResActualEdit(e, i, k, ai){
   const a=headings[i].resources[k].actuals[ai];
   resActualPopup(e,i,k,a,ai,null);
 }
+// Which kind of period a range is: a week, a billing period, or custom dates
+function rangeMode(s,e){
+  if(s===fmt(mondayOf(s)) && e===fmt(addDay(s,6))) return 'weekly';
+  const b=periodBounds(periodKey(e,'billing'),'billing');
+  return b.start===s && b.end===e ? 'billing' : 'custom';
+}
 function resActualPopup(e, i, k, t, ai, name){
   const res=headings[i].resources[k];
-  const plan=plannedHours(res,t.start,t.end);
-  const others=res.actuals.filter((a,j)=>j!==ai && a.start<=t.end && a.end>=t.start);
   openHoursPopup({x:e.clientX, y:e.clientY,
     title:resLabel(res,'Resource'),
-    sub:`Actual time, ${name?name+' ':''}(${fmtDisplay(t.start)} to ${fmtDisplay(t.end)})`,
+    sub:'Actual time for these dates',
     value: ai===null?'':fmtNum(actVal(t).v), unit: ai===null?unitPref:actVal(t).unit,
-    hint:v=>{
-      let m=`Planned for these dates: ${fmtHours(plan)}. Actual hours replace the plan for every day in this range.`;
+    dates:{start:t.start,end:t.end}, ghost:{rk:`${i}p${k}`, band:'low', onlyIfChanged:ai!==null},
+    hint:(v,s,z)=>{
+      const plan=plannedHours(res,s,z);
+      const others=res.actuals.filter((a,j)=>j!==ai && a.start<=z && a.end>=s);
+      let m=`Planned for these dates: ${fmtHours(plan)}. Actual time replaces the plan for every day in this range.`;
       if(v!==null && res.rate) m+=` ${fmtHours(v)} costs ${money2(Math.round(v*res.rate*100))}.`;
       if(others.length) m+=` Also entered over part of this range: ${others.map(a=>`${actText(a)} (${fmtDisplay(a.start)} to ${fmtDisplay(a.end)})`).join(', ')}. Both count.`;
       return m;
     },
     allowEmptyRemove: ai!==null,
-    onApply:(v,u)=>{
-      if(ai===null){ const a={start:t.start,end:t.end}; setActVal(a,v,u); a.mode=t.mode==='billing'?'billing':'weekly'; res.actuals.push(a); }
-      else setActVal(res.actuals[ai],v,u);
+    onApply:(v,u,s,z)=>{
+      const a = ai===null ? {} : res.actuals[ai];
+      a.start=s; a.end=z; setActVal(a,v,u); a.mode=rangeMode(s,z);
+      if(ai===null) res.actuals.push(a);
       res.actuals.sort((x,y)=>x.start<y.start?-1:x.start>y.start?1:0);
       refresh();
     },
     removeLabel: ai===null?null:'Remove',
     onRemove: ai===null?null:()=>{ res.actuals.splice(ai,1); refresh(); }});
+}
+
+// ── Moving and stretching an actual-time box (whole days; overlaps allowed,
+// as two timesheet entries can cover the same dates)
+function startResActDrag(e, i, k, ai, mode, el){
+  if(e.button!==0) return;
+  e.preventDefault(); e.stopPropagation(); hideTooltip(); closeAllPopups();
+  const res=headings[i].resources[k], a=res.actuals[ai];
+  const sx=e.clientX; let moved=false, ns=a.start, ne=a.end;
+  const add=(d,n)=>fmt(addDay(d,n));
+  const onMove=me=>{
+    const dx=me.clientX-sx;
+    if(!moved && Math.abs(dx)<3) return;
+    moved=true; el.classList.add('dragging');
+    const d=Math.round(dx/pxPerDay);
+    if(mode==='move'){ ns=add(a.start,d); ne=add(a.end,d); }
+    else if(mode==='l'){ ns=add(a.start,d); if(ns>a.end) ns=a.end; ne=a.end; }
+    else { ne=add(a.end,d); if(ne<a.start) ne=a.start; ns=a.start; }
+    el.style.left=(xForDate(ns)+1)+'px'; el.style.width=Math.max(6,xForDate(ne)+pxPerDay-xForDate(ns)-2)+'px';
+    showTipAt(me, `${fmtDisplay(ns)} to ${fmtDisplay(ne)}<br>${workdaysInRange(parseDate(ns),parseDate(ne))} working days`);
+  };
+  const onUp=me=>{
+    document.removeEventListener('mousemove',onMove); document.removeEventListener('mouseup',onUp);
+    hideTooltip();
+    if(!moved){ if(mode==='move') openResActualEdit(me,i,k,ai); return; }
+    if(ns===a.start && ne===a.end){ refresh(); return; }
+    a.start=ns; a.end=ne; a.mode=rangeMode(ns,ne);
+    res.actuals.sort((x,y)=>x.start<y.start?-1:x.start>y.start?1:0);
+    refresh();
+  };
+  document.addEventListener('mousemove',onMove); document.addEventListener('mouseup',onUp);
 }
 
 // ── Hours popup (bars and actual hours)
@@ -2819,14 +2972,21 @@ function parseHours(str){
 //       onRemove?, removeLabel?, allowEmptyRemove?, onClose?}
 // Hours | Days switches the unit; the figure typed so far is converted with
 // the hours-per-day setting, so nothing has to be re-entered.
-let hpUnit='h';
+let hpUnit='h', hpGhost=null;
 function openHoursPopup(cfg){
   closeAllPopups();
   hrsCfg=cfg;
+  document.querySelectorAll('.res-hover').forEach(el=>el.style.display='none');   // the ghost takes over
   document.getElementById('hp-title').textContent=cfg.title;
   document.getElementById('hp-sub').textContent=cfg.sub;
   const inp=document.getElementById('hp-input');
   inp.value=cfg.value; inp.classList.remove('invalid');
+  const dates=document.getElementById('hp-dates');
+  dates.style.display=cfg.dates?'':'none';
+  if(cfg.dates){
+    const s=document.getElementById('hp-start'), e=document.getElementById('hp-end');
+    s.value=fmtDisplay(cfg.dates.start); e.value=fmtDisplay(cfg.dates.end); s.classList.remove('invalid'); e.classList.remove('invalid');
+  }
   setHpUnit(cfg.unit==='d'?'d':'h', false);
   const rm=document.getElementById('hp-remove');
   rm.style.display=cfg.onRemove?'':'none'; rm.textContent=cfg.removeLabel||'Remove';
@@ -2837,6 +2997,45 @@ function openHoursPopup(cfg){
   pop.style.top=Math.max(8,Math.min(cfg.y+8, window.innerHeight-pr.height-8))+'px';
   updateHoursHint();
   inp.focus(); inp.select();
+}
+// Dates are typed as dd/mm/yyyy (also d/m/yy or yyyy-mm-dd), or picked
+// from the calendar button. Returns YYYY-MM-DD, or '' if not a real date.
+function parseDateText(str){
+  str=String(str||'').trim();
+  let y,m,d,mt;
+  if((mt=str.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/))){ y=+mt[1]; m=+mt[2]; d=+mt[3]; }
+  else if((mt=str.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2}|\d{4})$/))){ d=+mt[1]; m=+mt[2]; y=+mt[3]; if(y<100) y+=2000; }
+  else return '';
+  const dt=new Date(y,m-1,d);
+  return (dt.getFullYear()===y && dt.getMonth()===m-1 && dt.getDate()===d) ? fmt(dt) : '';
+}
+function openDatePicker(id){
+  const txt=document.getElementById(id), nat=document.getElementById(id+'-native');
+  nat.value=parseDateText(txt.value)||'';
+  try{ nat.showPicker(); }catch(e){ txt.focus(); }
+}
+// The dates in the popup, or null if this entry has no dates
+function hpDates(){
+  if(!hrsCfg || !hrsCfg.dates) return null;
+  const s=parseDateText(document.getElementById('hp-start').value), e=parseDateText(document.getElementById('hp-end').value);
+  return {s, e, ok: isoDate(s) && isoDate(e) && s<=e};
+}
+// Dashed box with a + showing the dates the entry will cover
+function paintHpGhost(){
+  const cfg=hrsCfg; if(!cfg || !cfg.ghost) return;
+  const d=hpDates();
+  let el=cfg.ghost.el||hpGhost;
+  if(!el){
+    const row=document.querySelector(`#gantt-rows [data-rk="${cfg.ghost.rk}"]`); if(!row) return;
+    el=document.createElement('div'); el.className='res-ghost'+(cfg.ghost.band==='low'?' low':'');
+    if(cfg.ghost.band==='low') el.textContent='+';
+    row.appendChild(el); hpGhost=el;
+  }
+  const same = d && d.s===cfg.dates.start && d.e===cfg.dates.end;
+  if(!d || !d.ok || (cfg.ghost.onlyIfChanged && same)){ el.style.display='none'; return; }
+  el.style.display='';
+  const x0=xForDate(d.s), x1=xForDate(d.e)+pxPerDay;
+  el.style.left=(x0+(cfg.ghost.band==='low'?1:0))+'px'; el.style.width=Math.max(4,x1-x0-(cfg.ghost.band==='low'?2:0))+'px';
 }
 function setHpUnit(u, convert){
   const inp=document.getElementById('hp-input');
@@ -2857,22 +3056,34 @@ function updateHoursHint(){
   const inp=document.getElementById('hp-input'), v=parseHours(inp.value);
   inp.classList.toggle('invalid', v===null);
   const hint=document.getElementById('hp-hint');
-  hint.className='op-hint'+(v===null?' warn':'');
+  const d=hpDates(), err=hpDateError(d);
+  hint.className='op-hint'+(v===null||err?' warn':'');
   const dayNote = hpUnit==='d' ? `${fmtNum(hoursPerDay)} h per day (Settings). ` : '';
   hint.textContent = v===null ? `Not recognised. Enter ${hpUnit==='d'?'days, e.g. 3 or 2.5':'hours, e.g. 16 or 7.5'}.`
-    : dayNote + (hrsCfg.hint ? hrsCfg.hint(v===''?null:hpHours(v)) : '');
+    : err ? err
+    : dayNote + (hrsCfg.hint ? hrsCfg.hint(v===''?null:hpHours(v), d?d.s:null, d?d.e:null) : '');
+  paintHpGhost();
+}
+function hpDateError(d){
+  if(!d) return '';
+  document.getElementById('hp-start').classList.toggle('invalid', !isoDate(d.s));
+  document.getElementById('hp-end').classList.toggle('invalid', !isoDate(d.e) || (isoDate(d.s)&&d.e<d.s));
+  if(!isoDate(d.s) || !isoDate(d.e)) return 'Enter a start and end date as dd/mm/yyyy, or pick them with the calendar button.';
+  if(d.e<d.s) return 'The end date is before the start date.';
+  return hrsCfg.validate ? hrsCfg.validate(d.s,d.e) : '';
 }
 function commitHours(){
   if(!hrsCfg) return;
   const v=parseHours(document.getElementById('hp-input').value);
   if(v===null) return;
-  const cfg=hrsCfg, u=hpUnit;
+  const cfg=hrsCfg, u=hpUnit, d=hpDates();
   if(v===''){
     if(cfg.allowEmptyRemove && cfg.onRemove){ closeHoursPopup(); cfg.onRemove(); }
     return;
   }
+  if(hpDateError(d)){ updateHoursHint(); return; }
   closeHoursPopup();
-  cfg.onApply(v,u);
+  cfg.onApply(v,u,d?d.s:undefined,d?d.e:undefined);
 }
 function removeHours(){ const cfg=hrsCfg; if(!cfg||!cfg.onRemove) return; closeHoursPopup(); cfg.onRemove(); }
 function closeHoursPopup(){
@@ -2880,10 +3091,22 @@ function closeHoursPopup(){
   if(document.activeElement && pop.contains(document.activeElement)) document.activeElement.blur();
   pop.classList.remove('visible');
   const cfg=hrsCfg; hrsCfg=null;
+  if(hpGhost){ hpGhost.remove(); hpGhost=null; }
+  if(cfg && cfg.ghost && cfg.ghost.el) cfg.ghost.el.remove();
   if(cfg && cfg.onClose) cfg.onClose();
 }
 function closeAllPopups(){ closeCtx(); closeOverridePopup(); closeHoursPopup(); }
 document.getElementById('hp-input').addEventListener('input',updateHoursHint);
+['hp-start','hp-end'].forEach(id=>{
+  const el=document.getElementById(id), nat=document.getElementById(id+'-native');
+  nat.addEventListener('change',()=>{ if(nat.value){ el.value=fmtDisplay(nat.value); updateHoursHint(); } });
+  el.addEventListener('blur',()=>{ const v=parseDateText(el.value); if(v) el.value=fmtDisplay(v); });
+  el.addEventListener('input',updateHoursHint); el.addEventListener('change',updateHoursHint);
+  el.addEventListener('keydown',e=>{
+    if(e.key==='Enter'){ e.preventDefault(); commitHours(); }
+    if(e.key==='Escape'){ e.preventDefault(); e.stopPropagation(); closeHoursPopup(); }
+  });
+});
 document.getElementById('hp-input').addEventListener('keydown',e=>{
   if(e.key==='Enter'){ e.preventDefault(); commitHours(); }
   if(e.key==='Escape'){ e.preventDefault(); e.stopPropagation(); closeHoursPopup(); }
@@ -2959,9 +3182,7 @@ function resCtxAddBar(){
   if(gap.after&&s<gap.after) s=gap.after;
   if(gap.before&&en>gap.before) en=gap.before;
   if(s>en) return;
-  const def=newBarDefault(res);
-  openHoursPopup({x:resCtx.x,y:resCtx.y,title:resLabel(res,'New bar'),sub:`Time per week, ${fmtDisplay(s)} to ${fmtDisplay(en)}`,value:def.v,unit:def.unit,perWeek:true,
-    hint:v=>barHint(res,s,en,v), onApply:(v,u)=>{ res.bars.push(makeBar(s,en,v,u)); res.bars.sort((a,c)=>a.start<c.start?-1:1); refresh(); }});
+  newBarPopup({clientX:resCtx.x,clientY:resCtx.y}, i, k, s, en, null);
 }
 function resCtxActual(){
   closeCtx(); if(!resCtx) return;
