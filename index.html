@@ -3634,7 +3634,11 @@ function setZoom(val){
 function showTooltip(e,t,i){
   const tip=document.getElementById('tooltip');
   const deps=parseDeps(t.deps);
-  const depNames=deps.map(n=>{const d=tasks[n-1];return d?`#${n} ${d.name}`:`#${n}`;}).join(', ');
+  // Task numbers count tasks only (headings are not numbered), so #n is the
+  // nth non-heading task, not tasks[n-1].
+  const byNum=new Map(); let tn=0;
+  tasks.forEach(x=>{ if(!isHeading(x)) byNum.set(++tn, x); });
+  const depNames=deps.map(n=>{const d=byNum.get(n);return d?`#${n} ${d.name}`:`#${n}`;}).join(', ');
   const isMs=t.milestone||t.majorMilestone;
   // Milestones show their DELAY (offset after predecessor end); regular
   // tasks show their working-day length.

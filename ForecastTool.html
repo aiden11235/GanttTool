@@ -14,7 +14,7 @@
 :root {
   --comments-w:2px;  /* collapsed by default; widen via the main divider */
   --name-w:360px;
-  --title-w:132px; /* row titles: Budget, Remaining invoiced, Actual invoiced */
+  --title-w:132px; /* row titles: Budget, Invoicing */
   --fee-w:150px;   /* total fee; budget shows to date over remaining */
   --bg:#f7f7f5; --surface:#fff; --border:#e0ddd8; --border-strong:#c8c4bc;
   --text:#1a1a18; --text-muted:#6b6860; --text-faint:#9e9c97;
@@ -63,9 +63,9 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
 /* LEFT PANEL */
 #left-panel{width:734px;min-width:340px;max-width:1700px;flex-shrink:0;display:flex;flex-direction:column;background:var(--surface);border-right:2px solid var(--border-strong);overflow:hidden}
 /* Header = column labels (48px, matching month + week + day rows) plus
-   three totals strips (Budget 30px with two figures stacked, then Remaining
-   invoiced and Actual invoiced at 20px, matching the chart's three totals
-   rows) plus a 1px bottom border. 119px in all, the same as #gantt-header. */
+   two totals strips (Budget and Invoicing, 30px each with two figures
+   stacked, matching the chart's two totals rows) plus a 1px bottom border.
+   109px in all, the same as #gantt-header. */
 #left-header{background:#f0efe9;border-bottom:1px solid var(--border-strong);flex-shrink:0;position:relative}
 #left-header-cols{display:grid;grid-template-columns:28px 24px 32px var(--name-w) var(--title-w) var(--fee-w) var(--comments-w);height:48px;font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em}
 .lh-cell{display:flex;align-items:flex-end;padding:0 6px 5px;border-right:1px solid var(--border);white-space:nowrap;overflow:hidden}
@@ -106,6 +106,10 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
 .task-row{display:grid;grid-template-columns:28px 24px 32px var(--name-w) var(--title-w) var(--fee-w) var(--comments-w);height:29px;position:relative;border-bottom:1px solid var(--row-line);background:var(--surface)}
 .task-row.row-drop-below{border-bottom:2px solid var(--accent)!important}
 .task-row.row-dragging,.task-row.row-dragging-block{opacity:.45}
+.task-row.row-drop-above{border-top:2px solid var(--accent)!important}
+.gantt-row.row-dragging{opacity:.45}
+.res-add-left .res-add-btn{margin-left:12px;font-size:10px;padding:0 7px;line-height:16px}
+.gantt-row.res-add-row{border-bottom:none}
 .heading-stripe{position:absolute;left:0;top:0;bottom:0;width:3px;pointer-events:none;z-index:1}
 .sub-name{font-family:var(--font);font-size:13px;color:var(--text);padding-left:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:8px;width:100%}
 .sub-badge{font-size:10px;color:var(--text-muted);font-family:var(--font-mono)}
@@ -137,6 +141,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
 
 /* Fee entry. Shows $0.00 at rest, a plain number while editing. */
 .fee-cell{padding:0 2px!important}
+.fee-cap{font-style:normal;font-size:9px;color:var(--text-faint);white-space:nowrap;padding-left:3px;flex-shrink:0}
 .fee-input{border:none;background:transparent;font-family:var(--font-mono);font-size:11px;font-weight:600;line-height:28px;width:100%;outline:none;text-align:right;padding:0 5px 0 2px;min-width:0;vertical-align:middle;border-radius:2px}
 .fee-input:hover{background:rgba(255,255,255,.55)}
 .fee-input:focus{background:var(--accent-light);color:var(--text)!important}
@@ -175,6 +180,12 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
 .total-cell{position:absolute;top:0;height:100%;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:10px;font-weight:700;color:var(--text);border-right:1px solid var(--border-strong);white-space:nowrap;overflow:hidden}
 .total-cell.is-zero{color:var(--text-faint);font-weight:400}
 .total-cell.is-current{background:#fee2e2;color:#dc2626}
+/* Invoicing totals: remaining on top, actual invoices boxed beneath */
+.total-cell.stack2{flex-direction:column;justify-content:center;gap:1px}
+.total-cell.stack2 span{display:block;max-width:calc(100% - 4px);overflow:hidden;text-overflow:clip;line-height:12px;text-align:center}
+.tc-rem{font-weight:700;min-height:12px}
+.tc-act{font-weight:700;color:var(--text);background:#fff;border:1px solid var(--border-strong);border-radius:2px;padding:0 3px;font-size:9.5px}
+.tc-act.empty{visibility:hidden}
 
 #gantt-body{flex:1;overflow:auto;position:relative}
 #gantt-canvas-wrap{position:relative}
@@ -185,7 +196,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
 /* Actual row: no bars, just the invoices entered. Click a week or month
    to enter one; a dashed box shows which period the click will land in. */
 .gantt-row.act-row{cursor:pointer;background:repeating-linear-gradient(90deg,transparent 0 3px,rgba(0,0,0,.012) 3px 4px)}
-.act-hover{position:absolute;top:5px;bottom:5px;border:1px dashed var(--border-strong);border-radius:3px;pointer-events:none;z-index:2;display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-faint);background:rgba(255,255,255,.6)}
+.act-hover{position:absolute;top:22px;bottom:3px;border:1px dashed var(--border-strong);border-radius:3px;pointer-events:none;z-index:2;display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-faint);background:rgba(255,255,255,.6)}
 /* Sub-row bars: same as a Gantt subtask bar in its heading colour */
 .gantt-bar{position:absolute;top:7px;height:15px;border-radius:3px;box-shadow:0 1px 3px rgba(0,0,0,.18);z-index:3;overflow:hidden}
 /* Heading bar: the Gantt's EXPANDED heading look (light, one bar per work
@@ -210,6 +221,42 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
 .fee-label.neg{color:#dc2626!important}
 .bar-ext-label{position:absolute;top:8px;white-space:nowrap;font-size:10px;font-weight:700;text-transform:uppercase;pointer-events:none;z-index:4;line-height:1}
 
+/* MILESTONES ROW: the Gantt tool's diamond and label, no major-milestone line */
+.gantt-bar.bar-milestone{background-color:transparent!important;width:15px!important;height:15px!important;border-radius:0;top:7px;padding:0;overflow:visible;box-shadow:none!important;--ms-color:var(--bar-crit);cursor:default}
+.gantt-bar.bar-milestone::before{content:'';display:block;position:absolute;left:50%;top:50%;width:10.6px;height:10.6px;margin:0;transform:translate(-50%,-50%) rotate(45deg);background-color:var(--ms-color);box-sizing:border-box;box-shadow:var(--ms-shadow,0 1px 3px rgba(0,0,0,.18))}
+.bar-ext-label.ms-label{font-size:10px;font-weight:500;text-transform:none;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;pointer-events:auto;cursor:default}
+
+/* RESOURCING */
+.res-head-row{box-shadow:inset 0 1px 0 var(--border-strong)}
+.gantt-row.res-tot-row{box-shadow:inset 0 1px 0 var(--border-strong)}
+.res-plan{padding-left:16px}
+.ms-count{font-size:10px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:400}
+.bar-ext-label.clip{overflow:hidden;text-overflow:ellipsis}
+.res-total-cell{position:absolute;top:6px;bottom:6px;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:10px;font-weight:700;color:var(--text);border-right:1px solid var(--border);background:rgba(0,0,0,.035);white-space:nowrap;overflow:hidden;z-index:2}
+.res-total-cell.is-current{background:#fee2e2;color:#dc2626}
+.res-add-btn{background:none;border:1px dashed var(--border-strong);border-radius:3px;font-family:var(--font);font-size:11px;color:var(--text-muted);padding:1px 8px;cursor:pointer;white-space:nowrap}
+.res-add-btn:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-light)}
+.res-input{border:none;background:transparent;font-family:var(--font);font-size:12px;color:var(--text);width:100%;min-width:0;outline:none;padding:3px 5px;border-radius:2px;line-height:18px}
+.res-input:hover{background:rgba(0,0,0,.03)}
+.res-input:focus{background:var(--accent-light)}
+.res-input.invalid{background:#fee2e2!important}
+.res-input::placeholder{color:var(--text-faint);font-style:italic}
+.res-who{flex-direction:column;align-items:stretch;justify-content:center;gap:0}
+.res-name{margin-left:12px;width:calc(100% - 12px);padding:1px 5px;line-height:17px}
+.res-pos{margin-left:12px;width:calc(100% - 12px);padding:0 5px;line-height:15px;font-size:11px;color:var(--text-muted)}
+.res-rate{font-family:var(--font-mono);font-size:11px;text-align:right}
+.gantt-row.res-prow{cursor:pointer;background:repeating-linear-gradient(90deg,transparent 0 3px,rgba(0,0,0,.012) 3px 4px)}
+.gantt-bar.res-bar{cursor:grab;overflow:hidden}
+.gantt-bar.res-bar.dragging{opacity:.75;box-shadow:0 4px 14px rgba(0,0,0,.3);z-index:20;cursor:grabbing}
+.res-h{position:absolute;top:0;bottom:0;width:5px;cursor:ew-resize;background:rgba(255,255,255,.28);z-index:2}
+.res-hl{left:0;border-radius:3px 0 0 3px}
+.res-hr{right:0;border-radius:0 3px 3px 0}
+.res-bar-label{position:absolute;top:0;height:100%;display:flex;align-items:center;font-family:var(--font-mono);font-size:9px;font-weight:600;white-space:nowrap;pointer-events:none;z-index:1}
+.res-cover{position:absolute;top:0;bottom:0;background:rgba(255,255,255,.55);pointer-events:none}
+.res-ghost{position:absolute;top:5px;height:15px;border:1px dashed var(--accent);background:rgba(37,99,196,.12);border-radius:3px;pointer-events:none;z-index:5}
+.res-hover{position:absolute;top:22px;bottom:3px;border:1px dashed var(--border-strong);border-radius:3px;pointer-events:none;z-index:2;display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-faint);background:rgba(255,255,255,.6)}
+.res-hover.top{top:5px;bottom:auto;height:15px;font-size:9px}
+
 #gantt-grid-overlay{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:1}
 #period-lines{position:absolute;top:0;left:0;pointer-events:none;z-index:1}
 .month-line{position:absolute;top:0;width:1px;background:var(--border-strong)}
@@ -219,7 +266,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
 #today-label{position:absolute;top:1px;font-size:9px;font-weight:700;color:#ef4444;background:#fee2e2;padding:1px 3px;border-radius:2px;pointer-events:none;z-index:7;transform:translateX(-50%);white-space:nowrap}
 
 /* Empty state */
-#empty-state{position:absolute;inset:119px 0 0 0;display:none;align-items:center;justify-content:center;z-index:10;pointer-events:none}
+#empty-state{position:absolute;inset:109px 0 0 0;display:none;align-items:center;justify-content:center;z-index:10;pointer-events:none}
 #empty-state .es-card{pointer-events:auto;background:#fff;border:1px solid var(--border);border-radius:8px;padding:22px 26px;max-width:420px;box-shadow:0 4px 18px rgba(0,0,0,.06);text-align:left}
 #empty-state h2{font-size:14px;color:var(--text);margin-bottom:8px}
 #empty-state ol{font-size:12px;color:var(--text-muted);padding-left:18px;line-height:1.7;margin-bottom:14px}
@@ -273,6 +320,24 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
 #ovr-popup .op-hint{font-size:11px;color:var(--text-muted);line-height:1.45;margin:8px 0 10px;min-height:32px}
 #ovr-popup .op-hint.warn{color:#b45309}
 
+/* Hours entry (resource bars and actual hours) */
+#hrs-popup{position:fixed;z-index:900;background:#fff;border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,.22);padding:12px;width:290px;display:none;font-family:var(--font)}
+#hrs-popup.visible{display:block}
+#hrs-popup .op-title{font-size:12px;font-weight:700;color:var(--text);margin-bottom:2px}
+#hrs-popup .op-sub{font-size:11px;color:var(--text-muted);margin-bottom:8px}
+#hrs-popup .hp-row{display:flex;gap:6px;align-items:center}
+#hrs-popup input{flex:1;min-width:0;padding:6px 9px;border:1px solid #c8c4bc;border-radius:4px;font-size:13px;font-family:var(--font-mono);text-align:right}
+#hrs-popup input:focus{outline:none;border-color:#3b82f6}
+#hrs-popup input.invalid{border-color:#dc2626;background:#fee2e2}
+#hrs-popup .hp-unit{font-size:12px;color:var(--text-muted);width:34px}
+#hrs-popup .hp-units{display:flex;border:1px solid #c8c4bc;border-radius:4px;overflow:hidden;flex:none}
+#hrs-popup .hp-units button{border:none;background:#fff;color:var(--text-muted);font-size:11px;font-family:var(--font);padding:6px 8px;cursor:pointer}
+#hrs-popup .hp-units button+button{border-left:1px solid #c8c4bc}
+#hrs-popup .hp-units button.active{background:#e8e6e0;color:#4a4842;font-weight:600}
+#hrs-popup .op-hint{font-size:11px;color:var(--text-muted);line-height:1.45;margin:8px 0 10px;min-height:32px}
+#hrs-popup .op-hint.warn{color:#b45309}
+
+#set-hpd.invalid{border-color:#dc2626!important;background:#fee2e2}
 /* Message / choice modal */
 .modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:800;align-items:center;justify-content:center}
 .modal-card{background:#fff;border-radius:10px;padding:24px;width:360px;box-shadow:0 20px 60px rgba(0,0,0,.3);font-family:var(--font)}
@@ -303,6 +368,8 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
   body.printing #color-popup,
   body.printing #ctx-menu,
   body.printing #ovr-popup,
+  body.printing #hrs-popup,
+  body.printing .res-hover,
   body.printing #settings-modal,
   body.printing .modal-bg,
   body.printing #empty-state,
@@ -315,7 +382,8 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
   body.printing #gantt-body,
   body.printing #gantt-header{overflow:visible!important}
   body.printing .heading-del-btn,
-  body.printing .row-handle{visibility:hidden!important}
+  body.printing .row-handle,
+  body.printing .res-add-btn{visibility:hidden!important}
 }
 </style>
 </head>
@@ -350,7 +418,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
     <button id="bd-weekly" onclick="setBreakdown('weekly')">Weekly</button>
     <button id="bd-billing" onclick="setBreakdown('billing')">Billing period</button>
   </div>
-  <button class="tb-btn tb-btn-ghost" onclick="openSettings()" title="Global settings: billing period">⚙ Settings</button>
+  <button class="tb-btn tb-btn-ghost" onclick="openSettings()" title="Global settings: billing period, hours per day">⚙ Settings</button>
 </div>
 
 <div id="print-header"></div>
@@ -367,8 +435,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
         <div class="lh-cell" style="overflow:visible">Comments</div>
       </div>
       <div id="left-totals-b" class="left-totals tall"></div>
-      <div id="left-totals-i" class="left-totals"></div>
-      <div id="left-totals-a" class="left-totals"></div>
+      <div id="left-totals-i" class="left-totals tall"></div>
       <div id="name-col-resize" class="col-resize-grip" title="Drag to resize Heading column"></div>
     </div>
     <div id="left-body"></div>
@@ -392,7 +459,8 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
         <ol>
           <li>In the Gantt tool, set up the programme with headings and click <strong>Export JSON</strong>.</li>
           <li>Click <strong>Import JSON</strong> here and pick that file.</li>
-          <li>Enter the total fee against each heading, and actual invoices on the Actual rows.</li>
+          <li>Enter the total fee against each heading, and actual invoices below the green bar on the Invoicing rows.</li>
+          <li>Add resources under each heading, draw bars of hours per week, and enter actual hours from timesheets.</li>
           <li>Click <strong>Save JSON</strong>. The figures go back into the same file, and the Gantt tool keeps them.</li>
         </ol>
         <button class="tb-btn tb-btn-primary" onclick="importJSON()">Import JSON</button>
@@ -409,7 +477,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
   <span id="sb-hidden" style="color:#93c5fd;cursor:pointer;display:none" onclick="restoreHidden()"></span>
   <div style="flex:1"></div>
   <span id="sb-source" style="color:#475569"></span>
-  <span style="color:#334155">Enter the total fee per heading · Click the Actual row to enter an invoice</span>
+  <span style="color:#334155">Enter the total fee per heading · Click below a bar to enter an invoice or actual hours · Drag on a resource row to add a bar</span>
 </div>
 
 <div id="tooltip"></div>
@@ -436,6 +504,22 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
   <div style="display:flex;gap:8px;justify-content:flex-end">
     <button class="modal-btn" onclick="closeOverridePopup()">Cancel</button>
     <button class="modal-btn primary" onclick="commitOverride()">Apply</button>
+  </div>
+</div>
+
+<!-- Hours entry: resource bars (hours per week) and actual hours -->
+<div id="hrs-popup">
+  <div class="op-title" id="hp-title"></div>
+  <div class="op-sub" id="hp-sub"></div>
+  <div class="hp-row">
+    <div class="hp-units" title="Enter the time in hours or days. Days use the hours per day in Settings.">
+      <button type="button" id="hp-uh" tabindex="-1" onmousedown="event.preventDefault()" onclick="setHpUnit('h',true)">Hours</button><button type="button" id="hp-ud" tabindex="-1" onmousedown="event.preventDefault()" onclick="setHpUnit('d',true)">Days</button>
+    </div><input id="hp-input" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" placeholder="0"><span class="hp-unit" id="hp-unit">h</span></div>
+  <div class="op-hint" id="hp-hint"></div>
+  <div style="display:flex;gap:8px;justify-content:flex-end">
+    <button class="modal-btn" id="hp-remove" onclick="removeHours()" style="margin-right:auto;color:var(--bar-crit)">Remove</button>
+    <button class="modal-btn" onclick="closeHoursPopup()">Cancel</button>
+    <button class="modal-btn primary" onclick="commitHours()">Apply</button>
   </div>
 </div>
 
@@ -467,6 +551,13 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
     <div id="set-day-help" style="font-size:11px;color:#6b6860;line-height:1.45;margin-bottom:12px"></div>
     <div style="font-size:11px;color:#6b6860;margin-bottom:4px">Next invoices</div>
     <div id="set-preview" style="font-size:11px;line-height:1.6;color:#4a4842;background:#f5f3ef;border:1px solid #e5e1d8;border-radius:4px;padding:7px 9px;margin-bottom:16px;font-family:var(--font-mono)"></div>
+    <div style="font-size:11px;font-weight:700;color:#6b6860;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Resourcing</div>
+    <label for="set-hpd" style="font-size:11px;color:#6b6860;display:block;margin-bottom:4px">Hours per day</label>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+      <input id="set-hpd" type="number" min="0.5" max="24" step="0.1" style="width:80px;padding:6px 9px;border:1px solid #c8c4bc;border-radius:4px;font-size:13px;font-family:var(--font-mono)">
+      <span style="font-size:11px;color:#6b6860">Default 7.6</span>
+    </div>
+    <div style="font-size:11px;color:#6b6860;line-height:1.45;margin-bottom:16px">Used when time is entered in days. A bar of 3 days per week is 3 x this many hours each week. Time entered in hours is not affected.</div>
     <div style="display:flex;gap:8px;justify-content:flex-end">
       <button class="modal-btn" onclick="closeSettings()">Cancel</button>
       <button class="modal-btn primary" onclick="applySettings()">Apply</button>
@@ -546,7 +637,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
 // comments and programme colour come from the Gantt JSON and are read-only.
 //   segments:  the heading's work periods (direct, non-indirect subtasks merged)
 //   fee:       TOTAL FEE in dollars, held to whole cents
-//   actuals:   actual invoices entered on the Actual row, see allocateHeading()
+//   actuals:   actual invoices entered on the Invoicing row, see allocateHeading()
 //   fcColor:   a colour set here (null = follow the programme colour)
 //   order / excluded: position and visibility in the forecast only
 let headings = [];        // shown, in forecast order
@@ -774,12 +865,32 @@ function headingsFromGantt(d){
       if(last && m.start<=workdayAfter(last.end)){ if(m.end>last.end) last.end=m.end; }
       else segments.push({...m});
     });
-    const h={id:t.id, name:t.name||'', progColor:t.color||'#64748b', comments:t.comments||'', segments, progIndex:progIndex++};
+    const h={id:t.id, name:t.name||'', progColor:t.color||'#64748b', comments:t.comments||'', segments, progIndex:progIndex++,
+             milestones:milestonesOf(tasks, t.id)};
     applyFigures(h, readForecastProp(t.forecast));
     out.push(h);
   });
   const loose=tasks.filter(x=>!isH(x)&&!(x.headingId&&hIds.has(x.headingId))).length;
   return {list:out, loose};
+}
+
+// Milestones and major milestones under a heading, read-only, for the
+// Milestones row. Task numbers count tasks only (headings are not numbered),
+// the same as the Gantt tool's # column and dependency entries.
+function milestonesOf(tasks, headingId){
+  const num=new Map(); let n=0;
+  tasks.forEach(x=>{ if(x&&x.type!=='heading') num.set(++n, x); });
+  return tasks
+    .filter(x=>x&&x.type!=='heading'&&x.headingId===headingId&&(x.milestone||x.majorMilestone)&&/^\d{4}-\d\d-\d\d$/.test(x.start||''))
+    .map(x=>{
+      const deps=String(x.deps||'').split(',').map(v=>parseInt(v.trim())).filter(v=>!isNaN(v)&&v>=1);
+      return {id:x.id, name:x.name||'', date:x.start, major:!!x.majorMilestone, indirect:!!x.indirect,
+        overrideColor:(typeof x.overrideColor==='string'&&x.overrideColor)?x.overrideColor:null, bold:!!x.bold,
+        delay:+x.duration||0, hasDeps:deps.length>0,
+        depNames:deps.map(d=>{ const t=num.get(d); return t?`#${d} ${t.name||''}`:`#${d}`; }),
+        comments:x.comments||''};
+    })
+    .sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0);
 }
 
 // ═══════════════════════════════════════════════════════
@@ -801,6 +912,8 @@ function readForecastProp(f){
     order: Number.isFinite(f.order) ? f.order : null,
     excluded: !!f.excluded,
     billing: f.billing ? sanitiseBilling(f.billing) : null,
+    hoursPerDay: isFinite(+f.hoursPerDay)&&+f.hoursPerDay>0 ? sanitiseHpd(f.hoursPerDay) : null,
+    resources: sanitiseResources(f.resources),
     savedAt: typeof f.savedAt==='string' ? f.savedAt : ''
   };
 }
@@ -813,28 +926,66 @@ function sanitiseActuals(list){
                const l=cleanLabel(a.label); if(l) o.label=l; return o; })
     .sort((x,y)=>x.start<y.start?-1:x.start>y.start?1:0);
 }
+// Resourcing: people assigned to a heading, each with an hourly rate, bars
+// of planned hours per week, and actual hours from timesheets.
+//   {id, name, position?, rate, bars:[{start,end,hpw|dpw}], actuals:[{start,end,hours|days,mode}]}
+// A bar or actual entered in days keeps its days (dpw / days), so it follows
+// the hours-per-day setting; one entered in hours keeps its hours.
+const HPD_DEFAULT=7.6;
+let hoursPerDay=HPD_DEFAULT;      // project-wide, set in Settings
+function sanitiseHpd(v){ v=Math.round((+v||0)*100)/100; return v>0&&v<=24 ? v : HPD_DEFAULT; }
+function barHpw(b){ return b.dpw!=null ? b.dpw*hoursPerDay : (+b.hpw||0); }
+function actHours(a){ return a.days!=null ? a.days*hoursPerDay : (+a.hours||0); }
+const r2=v=>Math.max(0, Math.round((+v||0)*100)/100);
+const isoDate=v=>/^\d{4}-\d\d-\d\d$/.test(v||'');
+function newResId(){ return 'r'+Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
+function sanitiseResources(list){
+  return (Array.isArray(list)?list:[]).filter(r=>r&&typeof r==='object').map(r=>({
+    id: typeof r.id==='string'&&r.id ? r.id : newResId(),
+    name: String(r.name==null?'':r.name).slice(0,80),
+    position: String(r.position==null?'':r.position).replace(/\s+/g,' ').trim().slice(0,60),
+    rate: Math.max(0, Math.round((+r.rate||0)*100)/100),
+    bars: (Array.isArray(r.bars)?r.bars:[]).filter(b=>b&&isoDate(b.start)&&isoDate(b.end)&&b.end>=b.start)
+            .map(b=>isFinite(+b.dpw)&&b.dpw!=null ? {start:b.start, end:b.end, dpw:r2(b.dpw)} : {start:b.start, end:b.end, hpw:r2(b.hpw)})
+            .sort((x,y)=>x.start<y.start?-1:1),
+    actuals: (Array.isArray(r.actuals)?r.actuals:[]).filter(a=>a&&isoDate(a.start)&&isoDate(a.end)&&(isFinite(+a.hours)&&a.hours!=null || isFinite(+a.days)&&a.days!=null))
+            .map(a=>{ const o={start:a.start, end:a.end}; if(a.days!=null&&isFinite(+a.days)) o.days=r2(a.days); else o.hours=r2(a.hours); o.mode=a.mode==='billing'?'billing':'weekly'; return o; })
+            .sort((x,y)=>x.start<y.start?-1:x.start>y.start?1:0)
+  }));
+}
+// Copies in a fixed key order, so saved and reloaded figures compare equal
+function copyResources(list){
+  return (list||[]).map(r=>({id:r.id, name:r.name, ...(r.position?{position:r.position}:{}), rate:r.rate,
+    bars:r.bars.map(b=>b.dpw!=null?{start:b.start,end:b.end,dpw:b.dpw}:{start:b.start,end:b.end,hpw:b.hpw}),
+    actuals:r.actuals.map(a=>{ const o={start:a.start,end:a.end}; if(a.days!=null) o.days=a.days; else o.hours=a.hours; o.mode=a.mode; return o; })}));
+}
+
 // Copy figures onto a heading object (from a file, or from memory)
 function applyFigures(h, f){
   h.fee=f.fee; h.actuals=f.actuals.map(a=>({...a}));
+  h.resources=copyResources(f.resources||[]);
   h.fcColor=f.fcColor; h.order=f.order; h.excluded=f.excluded; h.savedAt=f.savedAt||'';
   h.fileBilling=f.billing||null;
+  h.fileHpd=f.hoursPerDay||null;
   h.color=h.fcColor||h.progColor;
 }
 function figuresOf(h){
-  return {fee:h.fee||0, actuals:(h.actuals||[]).map(a=>({...a})), fcColor:h.fcColor||null,
+  return {fee:h.fee||0, actuals:(h.actuals||[]).map(a=>({...a})), resources:copyResources(h.resources), fcColor:h.fcColor||null,
           order:(h.order??null), excluded:!!h.excluded, savedAt:h.savedAt||''};
 }
 // What gets written into the file for a heading, or null when there is
 // nothing to keep (so untouched headings stay exactly as the Gantt wrote them).
 function forecastPayload(h){
   const p={fee:h.fee||0, actuals:(h.actuals||[]).map(a=>({start:a.start,end:a.end,cents:a.cents,mode:a.mode,...(a.label?{label:a.label}:{})}))};
+  if((h.resources||[]).length) p.resources=copyResources(h.resources);
   if(h.fcColor) p.color=h.fcColor;
   if(h.order!=null) p.order=h.order;
   if(h.excluded) p.excluded=true;
   // The billing setting is project-wide. The Gantt tool rebuilds the top of
   // the file on export, so it travels on the headings instead.
   if(!isDefaultBilling(billing)) p.billing={...billing};
-  if(!p.fee && !p.actuals.length && !p.color && p.order==null && !p.excluded && !p.billing) return null;
+  if(hoursPerDay!==HPD_DEFAULT) p.hoursPerDay=hoursPerDay;
+  if(!p.fee && !p.actuals.length && !p.resources && !p.color && p.order==null && !p.excluded && !p.billing && !p.hoursPerDay) return null;
   return p;
 }
 
@@ -932,6 +1083,7 @@ function billingDates(){
   headings.concat(hiddenHeadings||[]).forEach(h=>{
     (h.segments||[]).forEach(s=>{ if(s.start<lo) lo=s.start; if(s.end>hi) hi=s.end; });
     (h.actuals||[]).forEach(a=>{ if(a.start<lo) lo=a.start; if(a.end>hi) hi=a.end; });
+    (h.resources||[]).forEach(r=>r.bars.concat(r.actuals).forEach(a=>{ if(a.start<lo) lo=a.start; if(a.end>hi) hi=a.end; }));
   });
   const from=fmt(addDay(lo,-400)), to=fmt(addDay(hi,400));
   const sig=JSON.stringify([billing,from,to,workdayOverrides,billing.freq==='fortnightly'?fmt(billingAnchor()):'']);
@@ -1004,7 +1156,7 @@ function todayStr(){ return window.__forecastToday || fmt(new Date()); }
 
 // ═══════════════════════════════════════════════════════
 //  ACTUAL INVOICES
-//  An actual is an amount entered on the Actual row for one week or month:
+//  An actual is an amount entered on the Invoicing row for one week or month:
 //     {start, end, cents, mode}   start/end = that week or month
 //  It is a real invoice, so it is anchored to the CALENDAR, never to the
 //  programme: whatever happens to the dates in the Gantt it stays put.
@@ -1059,9 +1211,50 @@ function allocateHeading(h){
   return {days, C, N, budget, inv, lockedBy, actAt, actShares, free, R, freeDays:free.length, imbalance, actualSum};
 }
 
+// ═══════════════════════════════════════════════════════
+//  RESOURCING
+//  A bar is hours per week, spread evenly over the working days it covers
+//  (hours per week / 5 per working day), so part weeks and public holidays
+//  are pro rata on the same calendar as the programme.
+//  Actual hours (from timesheets) are entered for a week or billing period.
+//  They REPLACE the planned hours for every day of that range, and are
+//  spread over its working days. Cost = hours x the resource's hourly rate.
+//  To date: actual hours, plus planned hours before today where no actual
+//  has been entered. Remaining: planned hours from today on.
+// ═══════════════════════════════════════════════════════
+function eachDay(start,end,fn){ const e=dayStart(end); for(let d=dayStart(start); d<=e; d=addDay(d)) fn(fmt(d)); }
+function resActualCovered(res){ const c=new Set(); (res.actuals||[]).forEach(a=>eachDay(a.start,a.end,d=>c.add(d))); return c; }
+function resourceCalc(res, mode, today){
+  const covered=resActualCovered(res);
+  const rate=+res.rate||0;
+  const periods=new Map();
+  const at=k=>{ let p=periods.get(k); if(!p){ p={hours:0,planH:0,actH:0,cents:0,acts:new Set()}; periods.set(k,p); } return p; };
+  let hToDate=0, hRemaining=0, planH=0, actH=0;
+  res.bars.forEach(b=>{
+    const perDay=barHpw(b)/5;
+    eachDay(b.start,b.end,d=>{
+      if(!isWorkday(d) || covered.has(d) || !perDay) return;
+      const p=at(periodKey(d,mode)); p.hours+=perDay; p.planH+=perDay;
+      planH+=perDay;
+      if(d<today) hToDate+=perDay; else hRemaining+=perDay;
+    });
+  });
+  res.actuals.forEach((a,ai)=>{
+    const wd=[]; eachDay(a.start,a.end,d=>{ if(isWorkday(d)) wd.push(d); });
+    const H=actHours(a), days=wd.length?wd:[a.end], each=H/days.length;
+    days.forEach(d=>{ const p=at(periodKey(d,mode)); p.hours+=each; p.actH+=each; p.acts.add(ai); });
+    actH+=H; hToDate+=H;
+  });
+  periods.forEach(p=>{ p.cents=p.hours*rate*100; });
+  return {res, rate, periods, covered, planH, actH, hToDate, hRemaining,
+          toDate:Math.round(hToDate*rate*100), remaining:Math.round(hRemaining*rate*100)};
+}
+const HRS=new Intl.NumberFormat('en-AU',{maximumFractionDigits:1});
+function fmtHours(h){ return HRS.format(Math.round((+h||0)*10)/10)+' h'; }
+
 function buildForecast(mode){
   const today=todayStr();
-  const budgetTotals=new Map(), invTotals=new Map(), actTotals=new Map(), remTotals=new Map();
+  const budgetTotals=new Map(), invTotals=new Map(), actTotals=new Map(), remTotals=new Map(), resTotals=new Map();
   let totalFee=0, unallocated=0;
   const add=(m,k,c)=>m.set(k,(m.get(k)||0)+c);
   const blank=()=>({cents:0,days:0,free:0,freeCents:0,locked:0,act:new Set()});
@@ -1094,7 +1287,15 @@ function buildForecast(mode){
       const p=ap.get(k)||blank(); p.cents+=c; p.act.add(ai); ap.set(k,p);
       add(actTotals,k,c);
     }));
+    // Resourcing: one result per resource, then the heading's per-period total
+    const res=(h.resources||[]).map(x=>resourceCalc(x,mode,today));
+    const resPeriods=new Map();
+    res.forEach(rc=>rc.periods.forEach((p,k)=>{
+      const q=resPeriods.get(k)||{cents:0,hours:0}; q.cents+=p.cents; q.hours+=p.hours; resPeriods.set(k,q);
+      add(resTotals,k,p.cents);
+    }));
     return {h, a, days:a.N, cents:a.C, periods:bp, inv:ip, act:ap,
+            res, resPeriods, resToDate:res.reduce((s,x)=>s+x.toDate,0), resRemaining:res.reduce((s,x)=>s+x.remaining,0),
             budgetToDate, budgetRemaining:a.C-budgetToDate,
             // Actuals are real invoices, so they always count as to date
             invToDate:a.actualSum+freeToDate, invRemaining:freeRemaining,
@@ -1103,7 +1304,8 @@ function buildForecast(mode){
             remTotal:a.C-a.actualSum};
   });
   const sum=(f)=>rows.reduce((s,r)=>s+f(r),0);
-  return {mode, rows, totals:budgetTotals, invTotals, actTotals, remTotals, totalFee, unallocated,
+  return {mode, rows, totals:budgetTotals, invTotals, actTotals, remTotals, resTotals, totalFee, unallocated,
+    resToDate:sum(r=>r.resToDate), resRemaining:sum(r=>r.resRemaining),
     remTotal:sum(r=>r.remTotal),
     budgetToDate:sum(r=>r.budgetToDate), budgetRemaining:sum(r=>r.budgetRemaining),
     invToDate:sum(r=>r.invToDate), invRemaining:sum(r=>r.invRemaining),
@@ -1149,6 +1351,7 @@ function resolveBreakdown(){
   weekly.rows.forEach(r=>{
     r.periods.forEach(p=>fit(p.cents,LABEL_FONT_PX,LABEL_WEIGHT));
     r.inv.forEach(p=>fit(p.freeCents,LABEL_FONT_PX,LABEL_WEIGHT));
+    r.resPeriods.forEach(p=>fit(Math.round(p.cents),TOTAL_FONT_PX,TOTAL_WEIGHT));
   });
   [weekly.totals,weekly.remTotals,weekly.actTotals].forEach(m=>m.forEach(c=>fit(c,TOTAL_FONT_PX,TOTAL_WEIGHT)));
   weeklyMinZoom = maxW ? Math.ceil((maxW+LABEL_PAD)/7) : 0;
@@ -1179,6 +1382,8 @@ function getGanttRange() {
   headings.forEach(h => {
     (h.segments||[]).forEach(s=>take(s.start,s.end));
     (h.actuals||[]).forEach(a=>take(a.start,a.end));   // a late invoice stays on the chart
+    (h.milestones||[]).forEach(m=>take(m.date,m.date));
+    (h.resources||[]).forEach(x=>x.bars.concat(x.actuals).forEach(a=>take(a.start,a.end)));
   });
   if (!minD) minD=new Date();
   minD=dayStart(minD);
@@ -1210,19 +1415,24 @@ function weekNumberOf(mondayStr){
   return off>=0 ? off+1 : off;
 }
 
-// Every heading draws four rows: the heading, Budget, Remaining invoiced, Actual invoiced.
-const SUB_ROWS = ['b','i','a'];
-const SUB_NAMES = {b:'Budget', i:'Remaining invoiced', a:'Actual invoiced'};
-function totalRowCount(){ return headings.length*(1+SUB_ROWS.length); }
-// The Actual row grows by one lane for each invoice that overlaps another
-// in time, so concurrent invoices stack instead of covering each other.
-// Lanes depend only on the invoices' dates, not on the view.
+// Every heading draws, top to bottom: the heading, Milestones, Budget,
+// Invoicing, then the Resourcing section (a totals row and one row per
+// resource). The Invoicing row carries the remaining-to-invoice bar on top
+// and the actual invoice boxes in lanes beneath it; resource rows work the
+// same way with planned-hours bars on top and actual hours beneath.
+const SUB_ROWS = ['b','i'];
+const SUB_NAMES = {m:'Milestones', b:'Budget', i:'Invoicing', a:'Actual invoices', r:''};
+// Rows that overlap in time go on separate lanes, so concurrent entries
+// stack instead of covering each other. Lanes depend only on the dates.
 const ACT_LANE_H=15, ACT_LANE_GAP=3;
 // The Budget row is taller: its fee cell holds two figures, to date over remaining.
 const BUDGET_ROW_H=37;
-function actualLanes(h){
+const ADD_ROW_H=24;
+// The Resourcing plan row holds three figures: total over to date over remaining
+const RES_HEAD_H=46;
+function lanesOf(list){
   const lane={}, ends=[];
-  (h.actuals||[]).map((a,i)=>({a,i}))
+  (list||[]).map((a,i)=>({a,i}))
     .sort((x,y)=>x.a.start<y.a.start?-1:x.a.start>y.a.start?1:(x.a.end<y.a.end?-1:1))
     .forEach(({a,i})=>{
       let l=ends.findIndex(e=>e<a.start);
@@ -1231,13 +1441,29 @@ function actualLanes(h){
     });
   return {lane, count:Math.max(1,ends.length)};
 }
+function actualLanes(h){ return lanesOf(h.actuals); }
 function actLaneCount(r){ return r ? actualLanes(r.h).count : 1; }
-function actRowHeight(r){ const n=actLaneCount(r); return n<=1 ? ROW_H : 14+n*ACT_LANE_H+(n-1)*ACT_LANE_GAP; }
-function rowHeight(r,kind){ return kind==='a' ? actRowHeight(r) : kind==='b' ? BUDGET_ROW_H : ROW_H; }
+// Bar at the top (INV_BAR_TOP), entry lanes from INV_LANE_TOP, one lane
+// always kept free so there is somewhere to click to add an entry.
+const INV_BAR_TOP=5, INV_LANE_TOP=24, INV_PAD_BOTTOM=5;
+function laneRowHeight(n){ return INV_LANE_TOP+n*ACT_LANE_H+(n-1)*ACT_LANE_GAP+INV_PAD_BOTTOM; }
+function invRowHeight(r){ return laneRowHeight(actLaneCount(r)); }
+function actRowHeight(r){ return invRowHeight(r); }
+function resRowHeight(res){ return laneRowHeight(lanesOf(res.actuals).count); }
+// The rows of one heading group, in order, with their heights. Both panels
+// and the content height are built from this, so they always line up.
+function rowSpecs(i, r){
+  const h=r?r.h:headings[i];
+  const out=[{kind:'h',rk:i+'h',ht:ROW_H},
+             {kind:'b',rk:i+'b',ht:BUDGET_ROW_H},{kind:'i',rk:i+'i',ht:laneRowHeight(lanesOf(h.actuals).count)},
+             {kind:'r',rk:i+'r',ht:RES_HEAD_H}];
+  (h.resources||[]).forEach((x,k)=>out.push({kind:'p',k,rk:`${i}p${k}`,ht:resRowHeight(x)}));
+  out.push({kind:'x',rk:i+'x',ht:ADD_ROW_H});   // small "+ Add resource" row at the bottom
+  return out;
+}
+function totalRowCount(){ return headings.reduce((s,h,i)=>s+rowSpecs(i,null).length,0); }
 function contentHeight(){
-  const fc=currentForecast;
-  if(!fc || fc.rows.length!==headings.length) return headings.length*(3*ROW_H+BUDGET_ROW_H);
-  return fc.rows.reduce((s,r)=>s+2*ROW_H+BUDGET_ROW_H+actRowHeight(r),0);
+  return headings.reduce((s,h,i)=>s+rowSpecs(i,null).reduce((t,x)=>t+x.ht,0),0);
 }
 function rowsHeight(){ return Math.max(contentHeight(),200); }
 
@@ -1253,6 +1479,13 @@ function splitCell(a, b, tipA, tipB, capA='to date', capB='remaining'){
   const neg=v=>v<0?' neg':'';
   return `<div class="split"><div class="fig fig-a${neg(a)}" title="${escHtml(tipA)}"><i>${capA}</i>${money2(a)}</div>`
        + `<div class="fig fig-b${neg(b)}" title="${escHtml(tipB)}"><i>${capB}</i>${money2(b)}</div></div>`;
+}
+// Three figures: a bold total, then to date and remaining (not bold)
+function splitCell3(t, a, b, tipT, tipA, tipB){
+  const neg=v=>v<0?' neg':'';
+  return `<div class="split split3"><div class="fig fig-a${neg(t)}" title="${escHtml(tipT)}"><i>total</i>${money2(t)}</div>`
+       + `<div class="fig fig-b${neg(a)}" title="${escHtml(tipA)}"><i>to date</i>${money2(a)}</div>`
+       + `<div class="fig fig-b${neg(b)}" title="${escHtml(tipB)}"><i>remaining</i>${money2(b)}</div></div>`;
 }
 function oneFig(v, tip){ return `<div class="one-fig${v<0?' neg':''}" title="${escHtml(tip)}">${money2(v)}</div>`; }
 
@@ -1272,7 +1505,7 @@ function renderLeft() {
     const row=document.createElement('div');
     row.className='heading-row';
     row.dataset.idx=i; row.dataset.rk=i+'h';
-    row.style.background=h.color+'22';
+    row.style.background=h.color+'44';   // twice the tint of the Resourcing plan row, so the heading reads as the heading
     row.style.color=h.color;
     row.innerHTML=`
       <div class="task-cell" style="padding:0">
@@ -1285,8 +1518,9 @@ function renderLeft() {
       <div class="task-cell" style="overflow:hidden">
         <div class="heading-name" title="${escHtml(h.name)}">${escHtml(h.name)||'<span style="opacity:.5">(unnamed heading)</span>'}</div>
       </div>
-      <div class="task-cell"></div>
+      <div class="task-cell">${(()=>{ const ms=h.milestones||[], nM=ms.filter(m=>m.major).length; return ms.length?`<span class="ms-count" title="Milestones from the programme, shown on the heading bar">◆ ${ms.length} milestone${ms.length!==1?'s':''}${nM?` · ${nM} major`:''}</span>`:''; })()}</div>
       <div class="task-cell fee-cell">
+        <i class="fee-cap">Total fee</i>
         <input class="fee-input${unalloc?' unallocated':''}" type="text" inputmode="decimal" autocomplete="off" spellcheck="false"
           data-idx="${i}" value="${C?money2(C):''}" placeholder="$0.00" style="color:${h.color}"
           title="${unalloc?'This heading has no working days in the programme, so its fee cannot be spread.':'Total fee for this stage. Accepts 12345.50, $12,345.50, 120k or 1.2m. Enter to apply, Escape to cancel.'}"
@@ -1296,13 +1530,16 @@ function renderLeft() {
     `;
     body.appendChild(row);
 
-    // ── BUDGET / REMAINING INVOICED / ACTUAL INVOICED ── (formatted like Gantt subtasks)
-    // Under the heading name: the dates on the first row, working days on the second.
-    SUB_ROWS.forEach(kind=>{
+    // ── SUB-ROWS (formatted like Gantt subtasks)
+    // Under the heading name: milestone count, the dates, working days.
+    rowSpecs(i,r).slice(1).forEach(spec=>{
+      const kind=spec.kind;
+      if(kind==='p'){ body.appendChild(leftResourceRow(h,i,r,spec)); return; }
+      if(kind==='x'){ body.appendChild(leftAddRow(h,i,spec)); return; }
       const sr=document.createElement('div');
-      sr.className='task-row'+(kind==='b'?' tall':'');
-      sr.dataset.idx=i; sr.dataset.rk=i+kind;
-      if(kind==='a' && actRowHeight(r)!==ROW_H) sr.style.height=actRowHeight(r)+'px';
+      sr.className='task-row tall';
+      sr.dataset.idx=i; sr.dataset.rk=spec.rk;
+      sr.style.height=spec.ht+'px';
       let info='', badge='', fee='';
       const nAct=(h.actuals||[]).length;
       const hasFigures = C || nAct;
@@ -1315,15 +1552,23 @@ function renderLeft() {
         info = nDays ? `${nDays} working day${nDays!==1?'s':''}` : '';
         if(r.a.imbalance) badge+=`<span class="sub-badge warn" title="Every working day is in an invoiced period, so the rest of the fee has nowhere to go">⚠</span>`;
         else if(r.a.R<0) badge+=`<span class="sub-badge warn" title="Actual invoices add up to more than the total fee">⚠</span>`;
-        if(hasFigures) fee=oneFig(r.remTotal, 'Still to be invoiced: total fee less actual invoices');
-      } else {
-        info = nAct ? '' : '<span class="sub-badge muted">click the chart to enter an invoice</span>';
-        if(hasFigures) fee=oneFig(r.actToDate, 'Actually invoiced so far: the total of all actual invoices entered');
+        if(hasFigures) fee=splitCell(r.actToDate, r.remTotal,
+          'Invoiced to date: the total of all actual invoices entered',
+          'Remaining: still to be invoiced (total fee less actual invoices)');
+      } else if(kind==='r'){
+        sr.classList.add('res-head-row');
+        sr.style.background=h.color+'22';   // the heading group's tint, as the chart row
+        info = 'Resourcing plan';
+        if((h.resources||[]).length) fee=splitCell3(r.resToDate+r.resRemaining, r.resToDate, r.resRemaining,
+          'Total resourcing cost: to date plus remaining',
+          `Resourcing to date: actual hours, plus planned hours before today (${todayTxt}) where no actual has been entered, at each resource's rate`,
+          'Resourcing remaining: planned hours from today on, at each resource\'s rate');
+        sr.addEventListener('contextmenu', e=>openResHeadMenu(e,i));
       }
       sr.innerHTML=`
         <div class="heading-stripe" style="background:${h.color}"></div>
         <div class="task-cell"></div><div class="task-cell"></div><div class="task-cell"></div>
-        <div class="task-cell" style="overflow:hidden"><div class="sub-info">${info}</div></div>
+        <div class="task-cell" style="overflow:hidden"><div class="${kind==='r'?'sub-title res-plan':'sub-info'}">${info}</div></div>
         <div class="task-cell" style="overflow:hidden"><div class="sub-title">${SUB_NAMES[kind]}${badge}</div></div>
         <div class="task-cell fee-cell">${fee}</div>
         <div class="task-cell"></div>`;
@@ -1351,8 +1596,7 @@ function renderLeftTotals(fc){
   const bad=fc.imbalanced.length;
   strip('left-totals-i',
     bad?`<span class="lt-warn">⚠ ${bad} heading${bad!==1?'s':''} cannot balance to the fee</span>`:'',
-    'Remaining invoiced', oneFig(fc.remTotal,'Still to be invoiced, all headings'));
-  strip('left-totals-a','','Actual invoiced', oneFig(fc.actToDate,'Actually invoiced, all headings'));
+    'Invoicing', splitCell(fc.actToDate,fc.remTotal,'Invoiced to date, all headings','Still to be invoiced, all headings'));
 }
 
 function overallSpan(){
@@ -1435,7 +1679,6 @@ function renderGanttHeader(minD,maxD,totalPx,fc) {
   for(let w=new Date(minD); w<=maxD; w=addDay(w,7)){
     const cell=document.createElement('div'); cell.className='gantt-week-cell';
     cell.style.width=(pxPerDay*7)+'px';
-    if(w<=today&&today<addDay(w,7)) cell.classList.add('is-current');
     const num=weekNumberOf(fmt(w));
     if(num!==null){
       if(pxPerDay>=3) cell.textContent=num;
@@ -1457,7 +1700,6 @@ function renderGanttHeader(minD,maxD,totalPx,fc) {
       cell.style.width=(xForDate(fmt(addDay(d)))-xForDate(str))+'px';
       cell.textContent=LETTERS[d.getDay()];
       if(!isWorkday(str)) cell.classList.add('is-nonwork');
-      if(str===todayS) cell.classList.add('is-today');
       if(Object.prototype.hasOwnProperty.call(workdayOverrides,str)) cell.classList.add('is-custom');
       const dObj=new Date(str+'T00:00:00');
       attachTip(cell,()=>{
@@ -1480,11 +1722,11 @@ function renderGanttHeader(minD,maxD,totalPx,fc) {
   }
   wrap.appendChild(dr);
 
-  // Three totals rows: Budget, Invoiced, Actual. Same order as the sub-rows.
-  const curKey=periodKey(todayS,fc.mode);
+  // Two totals rows, matching the rows below: Budget, then Invoicing with the
+  // remaining figure on top and the actual invoices beneath it.
   const periods=periodsInRange(minD,maxD,fc.mode,totalPx);
-  [['b',fc.totals],['i',fc.remTotals],['a',fc.actTotals]].forEach(([kind,map])=>{
-    const tr=document.createElement('div'); tr.className='gantt-totals-row'+(kind==='b'?' tall':'');
+  [['b',fc.totals],['i',fc.remTotals]].forEach(([kind,map])=>{
+    const tr=document.createElement('div'); tr.className='gantt-totals-row tall';
     tr.dataset.kind=kind;
     tr.style.width=(totalPx+200)+'px';
     periods.forEach(p=>{
@@ -1492,10 +1734,21 @@ function renderGanttHeader(minD,maxD,totalPx,fc) {
       const cell=document.createElement('div'); cell.className='total-cell';
       cell.dataset.key=p.key;
       cell.style.left=p.x0+'px'; cell.style.width=(p.x1-p.x0)+'px';
-      if(p.key===curKey) cell.classList.add('is-current');
-      if(!cents) cell.classList.add('is-zero');
-      else cell.textContent = fc.mode==='weekly' ? money0(cents) : fitText(cents,p.x1-p.x0,TOTAL_FONT_PX,TOTAL_WEIGHT);
-      attachTip(cell,()=>totalTip(fc,p,cents,kind));
+      const show=c=>fc.mode==='weekly' ? money0(c) : fitText(c,p.x1-p.x0,TOTAL_FONT_PX,TOTAL_WEIGHT);
+      if(kind==='b'){
+        if(!cents) cell.classList.add('is-zero');
+        else cell.textContent = show(cents);
+        attachTip(cell,()=>totalTip(fc,p,cents,kind));
+      } else {
+        // Remaining on top, actual invoices beneath (boxed, like the row)
+        cell.classList.add('stack2');
+        const act=fc.actTotals.get(p.key)||0;
+        const top=document.createElement('span'); top.className='tc-rem'; top.textContent = cents ? show(cents) : '';
+        const bot=document.createElement('span'); bot.className='tc-act'+(act?'':' empty'); bot.textContent = act ? show(act) : '';
+        cell.appendChild(top); cell.appendChild(bot);
+        if(cents) attachTip(top,()=>totalTip(fc,p,cents,'i'));
+        if(act) attachTip(bot,()=>totalTip(fc,p,act,'a'));
+      }
       tr.appendChild(cell);
     });
     wrap.appendChild(tr);
@@ -1505,7 +1758,8 @@ function renderGanttHeader(minD,maxD,totalPx,fc) {
 function rowMap(r,kind){ return kind==='b'?r.periods:kind==='i'?r.inv:r.act; }
 
 function totalTip(fc,p,cents,kind){
-  let html=`<strong>${SUB_NAMES[kind]}, ${escHtml(periodName(p.key,fc.mode,true))}</strong>`
+  const ttl={b:'Budget',i:'Remaining to invoice',a:'Actual invoices'}[kind];
+  let html=`<strong>${ttl}, ${escHtml(periodName(p.key,fc.mode,true))}</strong>`
     +`<br>${fmtDisplay(p.start)} to ${fmtDisplay(p.end)}`
     +`<br>${workdaysInRange(parseDate(p.start),parseDate(p.end))} working days`;
   if(!cents) return html+'<br><span style="opacity:.7">Nothing in this period</span>';
@@ -1516,6 +1770,7 @@ function totalTip(fc,p,cents,kind){
   });
   html+=`<div class="tt-row" style="font-weight:700;margin-top:2px"><span>Total</span><span>${money2(cents)}</span></div></div>`;
   if(kind==='i') html+=`<div style="opacity:.6;font-size:10px">Still to be invoiced in this period, not counting actual invoices</div>`;
+  if(kind==='a') html+=`<div style="opacity:.6;font-size:10px">Actual invoices dated in this period</div>`;
   return html;
 }
 
@@ -1587,7 +1842,7 @@ function renderGanttBars(totalPx,fc) {
     // ── HEADING ROW: light expanded-heading bars, name label, no figures
     const row=document.createElement('div');
     row.className='gantt-heading-row';
-    row.style.background=lightenHex(h.color,0.078);
+    row.style.background=lightenHex(h.color,0.156);
     row.dataset.idx=i; row.dataset.rk=i+'h';
     segX.forEach(s=>{
       const bar=document.createElement('div');
@@ -1598,43 +1853,77 @@ function renderGanttBars(totalPx,fc) {
       attachTip(bar,()=>barTip(r));
       row.appendChild(bar);
     });
-    if(h.name && segX.length){
-      const lbl=document.createElement('div');
-      lbl.className='bar-ext-label';
-      lbl.textContent=h.name;
-      lbl.style.left=(lastX2+10)+'px';
-      lbl.style.color=h.color;
-      row.appendChild(lbl);
-    }
+    // No heading name on the chart (it is in the left panel); only the
+    // milestones are labelled, over the heading bar
+    addMilestones(row, h, null);
     ganttRows.appendChild(row);
 
-    // ── BUDGET and INVOICED: full colour subtask bars carrying the figures.
-    // ── ACTUAL: no bars (an invoice is not time); only what has been entered.
-    SUB_ROWS.forEach(kind=>{
+    // ── BUDGET, INVOICING, RESOURCING
+    rowSpecs(i,r).slice(1).forEach(spec=>{
+      const kind=spec.kind;
+      if(kind==='r'){ ganttRows.appendChild(drawResTotalsRow(r,i,spec,mode)); return; }
+      if(kind==='p'){ ganttRows.appendChild(drawResourceRow(r,i,spec,mode)); return; }
+      if(kind==='x'){
+        const xr=document.createElement('div'); xr.className='gantt-row res-add-row';
+        xr.dataset.idx=i; xr.dataset.rk=spec.rk; xr.style.height=spec.ht+'px';
+        xr.addEventListener('contextmenu', e=>openResHeadMenu(e,i));
+        ganttRows.appendChild(xr); return;
+      }
       const sr=document.createElement('div');
-      sr.className='gantt-row'+(kind==='b'?' tall':kind==='i'?' inv-row':' act-row');
-      sr.dataset.idx=i; sr.dataset.rk=i+kind;
-      if(kind==='a' && actRowHeight(r)!==ROW_H) sr.style.height=actRowHeight(r)+'px';
-      if(kind!=='a'){
-        const ink=textOn(h.color);
-        const tickCol = ink==='#ffffff' ? 'rgba(255,255,255,.4)' : 'rgba(0,0,0,.18)';
-        segX.forEach(s=>{
-          const bar=document.createElement('div');
-          bar.className='gantt-bar';
-          bar.style.left=s.x0+'px'; bar.style.width=(s.x1-s.x0)+'px';
-          bar.style.background=h.color;
-          addPeriodTicks(bar, s, mode, tickCol);
-          attachTip(bar,()=>barTip(r));
-          sr.appendChild(bar);
-        });
-      } else {
+      sr.className='gantt-row tall'+(kind==='i'?' inv-row act-row':'');
+      sr.dataset.idx=i; sr.dataset.rk=spec.rk;
+      sr.style.height=spec.ht+'px';
+      const ink=textOn(h.color);
+      const tickCol = ink==='#ffffff' ? 'rgba(255,255,255,.4)' : 'rgba(0,0,0,.18)';
+      // Budget: bar centred in the row. Invoicing: bar at the top, invoices beneath.
+      const barTop = kind==='i' ? INV_BAR_TOP : null;
+      segX.forEach(s=>{
+        const bar=document.createElement('div');
+        bar.className='gantt-bar';
+        bar.style.left=s.x0+'px'; bar.style.width=(s.x1-s.x0)+'px';
+        bar.style.background=h.color;
+        if(barTop!==null) bar.style.top=barTop+'px';
+        addPeriodTicks(bar, s, mode, tickCol);
+        // Invoicing: the part of the bar already invoiced is lightened, the
+        // same way actual hours lighten a resource bar
+        if(kind==='i') coverInvoiced(bar, s, h);
+        attachTip(bar,()=>barTip(r));
+        sr.appendChild(bar);
+      });
+      drawPeriodLabels(sr, r, segX, rowMap(r,kind), mode, kind);
+      if(kind==='i'){
+        drawActualTags(sr, r, r.act, mode);
         attachActualHover(sr);
         sr.addEventListener('click', e=>{ if(e.button===0) openActualEntryAt(e, i, sr); });
       }
-      drawPeriodLabels(sr, r, kind==='a'?[]:segX, rowMap(r,kind), mode, kind);
       sr.addEventListener('contextmenu', e=>openRowMenu(e, i, kind, sr));
       ganttRows.appendChild(sr);
     });
+  });
+}
+
+// [x0,x1] ranges less the covered ranges
+function subtractX(ranges, cov){
+  let out=ranges;
+  cov.forEach(([c0,c1])=>{
+    const next=[];
+    out.forEach(([a,z])=>{ if(c1<=a||c0>=z){ next.push([a,z]); return; } if(c0>a) next.push([a,c0]); if(c1<z) next.push([c1,z]); });
+    out=next;
+  });
+  return out;
+}
+// White wash over the days of a segment that fall inside an actual invoice's
+// period (merged, so overlapping invoices do not double the wash).
+function coverInvoiced(bar, s, h){
+  const runs=(h.actuals||[]).map(a=>({start:a.start>s.seg.start?a.start:s.seg.start, end:a.end<s.seg.end?a.end:s.seg.end}))
+    .filter(x=>x.start<=x.end).sort((x,y)=>x.start<y.start?-1:1);
+  const merged=[];
+  runs.forEach(x=>{ const m=merged[merged.length-1]; if(m && x.start<=fmt(addDay(m.end,1))){ if(x.end>m.end) m.end=x.end; } else merged.push({...x}); });
+  merged.forEach(c=>{
+    const el=document.createElement('div'); el.className='res-cover';
+    el.style.left=(xForDate(c.start)-s.x0)+'px';
+    el.style.width=Math.max(1, xForDate(c.end)+pxPerDay-xForDate(c.start))+'px';
+    bar.appendChild(el);
   });
 }
 
@@ -1655,12 +1944,12 @@ function addPeriodTicks(bar, s, mode, col){
   }
 }
 
-// A dashed box follows the mouse on the Actual row, showing which week or
+// A dashed box follows the mouse on the Invoicing row, showing which week or
 // month a click will enter an invoice into.
 function attachActualHover(sr){
   let box=null;
   sr.addEventListener('mousemove', e=>{
-    if(e.target.classList.contains('fee-label')){ if(box) box.style.display='none'; return; }
+    if(e.target.classList.contains('fee-label')||e.target.closest('.gantt-bar')){ if(box) box.style.display='none'; return; }
     const x=e.clientX-sr.getBoundingClientRect().left;
     const key=periodKey(dateAtX(x),breakdownView), b=periodBounds(key,breakdownView);
     const x0=Math.max(0,xForDate(b.start)), x1=Math.min(ganttTotalPx,xForDate(b.next));
@@ -1677,18 +1966,24 @@ function attachActualHover(sr){
 // Actual invoices are always a white tag with a coloured border, on the
 // Actual row and wherever they feed the Invoiced row.
 function drawPeriodLabels(row, r, segX, map, mode, kind){
-  if(kind==='a') return drawActualTags(row, r, map, mode);
   const h=r.h, ink=textOn(h.color);
+  const covX = kind==='i' ? (h.actuals||[]).map(x=>[xForDate(x.start), xForDate(x.end)+pxPerDay]) : [];
   map.forEach((p,key)=>{
-    // Remaining invoiced shows only what is still to be invoiced: a period
+    // The green bar on the Invoicing row shows only what is still to be invoiced: a period
     // covered by an invoice in full is blank; one covered in part shows what
-    // is left of it. Actual amounts live on the Actual invoiced row only.
+    // is left of it. Actual amounts live in the invoice boxes below the bar.
     const val = kind==='i' ? p.freeCents : p.cents;
     if(!val) return;
     const b=periodBounds(key,mode);
     const px0=xForDate(b.start), px1=xForDate(b.next);
     let cx0=0, cx1=0;
-    segX.forEach(s=>{ const a=Math.max(px0,s.x0), z=Math.min(px1,s.x1); if(z-a>cx1-cx0){ cx0=a; cx1=z; } });
+    segX.forEach(s=>{
+      const a=Math.max(px0,s.x0), z=Math.min(px1,s.x1);
+      // Invoicing: the figure is what is left to invoice, so it sits on the
+      // part of the bar not already invoiced (not on the lightened part)
+      const pieces = kind==='i' ? subtractX([[a,z]], covX) : [[a,z]];
+      pieces.forEach(([pa,pz])=>{ if(pz-pa>cx1-cx0){ cx0=pa; cx1=pz; } });
+    });
     const hasPiece=cx1>cx0;
     if(!hasPiece){ cx0=px0; cx1=px1; }
     // Budget and Invoiced read the same whether a figure is forecast or
@@ -1701,6 +1996,7 @@ function drawPeriodLabels(row, r, segX, map, mode, kind){
     lbl.textContent=txt;
     lbl.dataset.key=key;
     lbl.style.color=ink;
+    if(kind==='i') lbl.style.top=INV_BAR_TOP+'px';
     if(hasPiece && tw+6<=cx1-cx0){
       lbl.style.left=cx0+'px'; lbl.style.width=(cx1-cx0)+'px';
     } else {
@@ -1725,7 +2021,7 @@ function drawPeriodLabels(row, r, segX, map, mode, kind){
 function drawActualTags(row, r, map, mode){
   const h=r.h, {lane}=actualLanes(h);
   const n=actLaneCount(r);
-  const top0=Math.round((actRowHeight(r)-(n*ACT_LANE_H+(n-1)*ACT_LANE_GAP))/2);
+  const top0=INV_LANE_TOP;
   (h.actuals||[]).forEach((a,ai)=>{
     let x0=xForDate(a.start), x1=xForDate(fmt(addDay(a.end)));
     x0=Math.max(0,x0); x1=Math.min(ganttTotalPx,x1);
@@ -1767,13 +2063,13 @@ function labelTip(r,key,mode,kind,p){
   if(kind==='b'){
     html+=`<br>${p.days} of ${r.days} working days`
       +`<br><strong>${money2(p.cents)}</strong> <span style="opacity:.7">(${(C?p.cents/C*100:0).toFixed(1)}% of ${money2(C)})</span>`;
-    return html+`<br><span style="opacity:.6;font-style:italic">Actual invoices go on the Actual row</span>`;
+    return html+`<br><span style="opacity:.6;font-style:italic">Actual invoices go on the Invoicing row</span>`;
   }
   html+=`<br><strong>${money2(p.freeCents)}</strong> still to be invoiced`;
   html+=`<br><span style="opacity:.75">${p.free} working day${p.free!==1?'s':''} not yet invoiced share the ${money2(r.a.R)} left of the fee</span>`;
   const by=[...new Set([...(p.lockBy||[]),...p.act])].map(i=>h.actuals[i]).filter(Boolean);
   if(by.length) html+=`<br>Part of this ${unitName(mode)} is already invoiced: ${by.map(a=>escHtml(a.label||'invoice')).join(', ')}`;
-  return html+`<br><span style="opacity:.6;font-style:italic">Enter actual invoices on the Actual invoiced row.</span>`;
+  return html+`<br><span style="opacity:.6;font-style:italic">Click below the green bar on the Invoicing row to enter an actual invoice.</span>`;
 }
 
 function barTip(r){
@@ -1839,12 +2135,11 @@ function openRowMenu(e, idx, kind, rowEl){
   document.getElementById('ctx-title').textContent=`${SUB_NAMES[kind]} · ${periodName(key,mode,false)}`;
   const here=targetInvoices(h,ctxTarget);
   const enter=`<div class="ctx-item" onclick="ctxEnterActual()">✎ ${here.length?'Change or add actual invoices':'Enter actual invoice'} for this ${unitName(mode)}…</div>`;
+  const clear=here.length?[`<div class="ctx-item" onclick="ctxClearPeriod()">↺ Remove ${here.length===1?'the invoice':`the ${here.length} invoices`} dated in this ${unitName(mode)}</div>`]:[];
   showMenu(e, kind==='b'
     ? [`<div class="ctx-item info">Budget is the total fee spread evenly over the working days.</div>`, enter]
-    : kind==='i'
-    ? [`<div class="ctx-item info">What is still to be invoiced: the total fee less actual invoices, spread pro rata over the periods without an invoice.</div>`, enter]
-    : [enter].concat(here.length?[`<div class="ctx-item" onclick="ctxClearPeriod()">↺ Remove ${here.length===1?'the invoice':`the ${here.length} invoices`} dated in this ${unitName(mode)}</div>`]:[])
-             .concat(allItem(h)));
+    : [`<div class="ctx-item info">Green bar: what is still to be invoiced (the total fee less actual invoices, spread over the periods without an invoice). Boxes below: actual invoices.</div>`, enter]
+        .concat(clear).concat(allItem(h)));
 }
 function allItem(h){
   const n=(h.actuals||[]).length;
@@ -1910,8 +2205,8 @@ function openActualPopup(){
   const here=t.addOnly ? [] : targetInvoices(h,t);
   document.getElementById('op-title').textContent=h.name;
   document.getElementById('op-sub').textContent = t.inv
-    ? `Actual invoiced for ${fmtDisplay(b.start)} to ${fmtDisplay(b.end)}`
-    : `Actual invoiced, ${t.name} (${fmtDisplay(b.start)} to ${fmtDisplay(b.end)})`;
+    ? `Invoices for ${fmtDisplay(b.start)} to ${fmtDisplay(b.end)}`
+    : `Invoices, ${t.name} (${fmtDisplay(b.start)} to ${fmtDisplay(b.end)})`;
   const rows=document.getElementById('op-rows');
   rows.innerHTML=here.map(x=>popupRow(x.a.label,x.a.cents,x.i)).join('')+popupRow('',null,null);
   rows.querySelectorAll('input').forEach(inp=>{
@@ -2011,7 +2306,7 @@ function ctxClearAll(){
 document.addEventListener('mousedown',e=>{
   const m=document.getElementById('ctx-menu'), pop=document.getElementById('ovr-popup');
   if(m.classList.contains('visible') && !m.contains(e.target)) closeCtx();
-  // A click on the Actual row opens the popup itself, so leave that alone
+  // A click on the Invoicing row opens the popup itself, so leave that alone
   if(pop.classList.contains('visible') && !pop.contains(e.target) && !e.target.closest('.act-row')) closeOverridePopup();
 });
 
@@ -2076,6 +2371,787 @@ function flashStatus(msg){
   el.textContent=msg; el.style.color='#93c5fd';
   clearTimeout(_flashT);
   _flashT=setTimeout(()=>{ el.style.color=''; if(currentForecast) updateStatus(currentForecast); },3500);
+}
+
+// ═══════════════════════════════════════════════════════
+//  MILESTONES (read-only, from the programme), drawn on the HEADING row
+//  over the heading bar. Same diamond, label and tooltip as the Gantt tool.
+//  Major milestones are a diamond only here, without the full-height line.
+//  Milestones on the same date share one diamond; the label and tooltip
+//  list them all. Labels stop short of the next diamond, and of the
+//  heading's name; the name stops short of any diamond after it.
+// ═══════════════════════════════════════════════════════
+const INDIRECT_BAR_TINT=0.4;    // same as the Gantt tool
+const INDIRECT_TEXT_TINT=0.55;
+function addMilestones(row, h, nameLbl){
+  const groups=[];
+  (h.milestones||[]).forEach(m=>{
+    const g=groups[groups.length-1];
+    if(g && g.date===m.date) g.list.push(m); else groups.push({date:m.date, list:[m]});
+  });
+  groups.forEach(g=>g.list.sort((a,b)=>(b.major?1:0)-(a.major?1:0)));
+  const nameLeft = nameLbl ? parseFloat(nameLbl.style.left) : Infinity;
+  if(nameLbl){
+    const after=groups.map(g=>xForDate(g.date)).filter(x=>x+15>nameLeft);
+    if(after.length){ const room=Math.max(0, after[0]-6-nameLeft); nameLbl.style.maxWidth=room+'px'; nameLbl.classList.add('clip'); if(room<24) nameLbl.style.display='none'; }
+  }
+  groups.forEach((g,j)=>{
+    const x=xForDate(g.date), lead=g.list[0];
+    const base=lead.overrideColor||h.color;
+    const d=document.createElement('div');
+    d.className='gantt-bar bar-milestone'+(lead.major?' bar-major-milestone':'');
+    d.style.left=x+'px';
+    d.style.setProperty('--ms-color', lead.indirect ? lightenHex(base, INDIRECT_BAR_TINT) : base);
+    if(lead.indirect) d.style.setProperty('--ms-shadow','none');
+    attachTip(d,()=>milestoneTip(g.list));
+    row.appendChild(d);
+    if(!lead.name && g.list.length===1) return;
+    const left=x + pxPerDay*0.5 + 17.5;   // diamond right point + 10px, as in the Gantt tool
+    let next=groups[j+1] ? xForDate(groups[j+1].date) - 6 : Infinity;
+    if(left<nameLeft) next=Math.min(next, nameLeft-6);
+    const room=next-left;
+    if(room<24) return;
+    const lbl=document.createElement('div');
+    lbl.className='bar-ext-label ms-label';
+    lbl.textContent=(lead.name||'(unnamed)').trim()+(g.list.length>1?`  +${g.list.length-1}`:'');
+    lbl.style.left=left+'px';
+    if(room!==Infinity) lbl.style.maxWidth=room+'px';
+    lbl.style.color=h.color;
+    if(lead.bold||lead.major) lbl.style.fontWeight='700';
+    if(lead.overrideColor) lbl.style.color=lead.overrideColor;
+    if(lead.indirect){ lbl.style.color=lightenHex(lead.overrideColor||h.color, INDIRECT_TEXT_TINT); lbl.style.fontStyle='italic'; }
+    attachTip(lbl,()=>milestoneTip(g.list));
+    row.appendChild(lbl);
+  });
+}
+// The Gantt tool's tooltip, one block per milestone on that date
+function milestoneTip(list){
+  return list.map(m=>{
+    const durLine=`<br>Delay: ${fmtDuration(m.delay)}${m.delay===0?' (on predecessor end)':''}`;
+    const typeLine=m.major?'<br><em>Major milestone</em>':'<br><em>Milestone</em>';
+    return `<strong>${escHtml(m.name)||'(unnamed)'}</strong><br>Start: ${fmtDisplay(m.date)}<br>End: ${fmtDisplay(m.date)}${durLine}`
+      +(m.depNames.length?`<br>Depends on: ${escHtml(m.depNames.join(', '))}`:'')
+      +typeLine
+      +(m.comments?`<br><span style="opacity:.75;font-style:italic">💬 ${escHtml(m.comments)}</span>`:'');
+  }).join('<div style="border-top:1px solid #334155;margin:5px 0"></div>');
+}
+
+// ═══════════════════════════════════════════════════════
+//  RESOURCING
+//  Totals row: cost per week or billing period, all resources in the stage.
+//  Resource row: bars of hours per week on top (drag to move, drag the ends
+//  to stretch, click to change the hours), actual hours from timesheets in
+//  boxes beneath (click below the bars to enter them).
+// ═══════════════════════════════════════════════════════
+function drawResTotalsRow(r, i, spec, mode){
+  const row=document.createElement('div');
+  row.className='gantt-row tall res-tot-row';
+  row.style.background=lightenHex(r.h.color,0.078);   // the heading group's tint
+  row.dataset.idx=i; row.dataset.rk=spec.rk;
+  row.style.height=spec.ht+'px';
+  r.resPeriods.forEach((q,key)=>{
+    const c=Math.round(q.cents);
+    if(!c && !q.hours) return;
+    const b=periodBounds(key,mode);
+    const x0=Math.max(0,xForDate(b.start)), x1=Math.min(ganttTotalPx,xForDate(b.next));
+    if(x1<=x0) return;
+    const cell=document.createElement('div');
+    cell.className='res-total-cell';
+    cell.dataset.key=key;
+    cell.style.left=x0+'px'; cell.style.width=(x1-x0)+'px';
+    cell.textContent = mode==='weekly' ? money0(c) : fitText(c,x1-x0,TOTAL_FONT_PX,TOTAL_WEIGHT);
+    attachTip(cell,()=>resTotalsTip(r,key,mode));
+    row.appendChild(cell);
+  });
+  row.addEventListener('contextmenu', e=>openResHeadMenu(e,i));
+  return row;
+}
+function resTotalsTip(r,key,mode){
+  const b=periodBounds(key,mode);
+  let html=`<strong>${escHtml(r.h.name)}</strong><br>Resourcing, ${escHtml(periodName(key,mode,true))}<br>${fmtDisplay(b.start)} to ${fmtDisplay(b.end)}`;
+  html+=`<div style="margin-top:4px;border-top:1px solid #334155;padding-top:4px">`;
+  let H=0, C=0;
+  r.res.forEach(rc=>{
+    const p=rc.periods.get(key); if(!p || (!p.hours && !p.cents)) return;
+    H+=p.hours; C+=p.cents;
+    html+=`<div class="tt-row"><span>${escHtml(resLabel(rc.res))}${p.actH?' <span style="opacity:.6">(actual)</span>':''}</span><span>${fmtHours(p.hours)} · ${money2(Math.round(p.cents))}</span></div>`;
+  });
+  html+=`<div class="tt-row" style="font-weight:700;margin-top:2px"><span>Total</span><span>${fmtHours(H)} · ${money2(Math.round(C))}</span></div></div>`;
+  return html;
+}
+
+function drawResourceRow(r, i, spec, mode){
+  const h=r.h, k=spec.k, rc=r.res[k], res=rc.res;
+  const row=document.createElement('div');
+  row.className='gantt-row res-prow';
+  row.dataset.idx=i; row.dataset.rk=spec.rk; row.dataset.k=k;
+  row.style.height=spec.ht+'px';
+  const ink=textOn(h.color);
+  res.bars.forEach((b,bi)=>{
+    const x0=xForDate(b.start), x1=xForDate(b.end)+pxPerDay, w=Math.max(6,x1-x0);
+    const bar=document.createElement('div');
+    bar.className='gantt-bar res-bar';
+    bar.style.left=x0+'px'; bar.style.width=w+'px'; bar.style.top=INV_BAR_TOP+'px';
+    bar.style.background=h.color;
+    bar.dataset.bi=bi;
+    // Parts covered by actual hours: lightened, and the figure moves past them
+    let run=null;
+    const covers=[];
+    eachDay(b.start,b.end,d=>{
+      if(rc.covered.has(d)){ if(run) run.end=d; else run={start:d,end:d}; }
+      else if(run){ covers.push(run); run=null; }
+    });
+    if(run) covers.push(run);
+    covers.forEach(c=>{
+      const el=document.createElement('div'); el.className='res-cover';
+      el.style.left=(xForDate(c.start)-x0)+'px'; el.style.width=(xForDate(c.end)+pxPerDay-xForDate(c.start))+'px';
+      bar.appendChild(el);
+    });
+    const from=resLabelDate(b,rc.covered);
+    if(from){
+      const lx=xForDate(from)-x0+5, room=w-lx-6;
+      const bv=barVal(b), opts=[barText(b),`${fmtNum(bv.v)}${bv.unit}`,fmtNum(bv.v)];
+      const txt=opts.find(t=>textWidth(t,LABEL_FONT_PX,LABEL_WEIGHT)<=room);
+      if(txt){
+        const lbl=document.createElement('div'); lbl.className='res-bar-label';
+        lbl.textContent=txt; lbl.style.left=lx+'px'; lbl.style.color=ink;
+        bar.appendChild(lbl);
+      }
+    }
+    const hl=document.createElement('div'); hl.className='res-h res-hl'; hl.title='Drag to change the start';
+    const hr=document.createElement('div'); hr.className='res-h res-hr'; hr.title='Drag to change the end';
+    bar.appendChild(hl); bar.appendChild(hr);
+    hl.addEventListener('mousedown',e=>startResBarDrag(e,i,k,bi,'l',bar));
+    hr.addEventListener('mousedown',e=>startResBarDrag(e,i,k,bi,'r',bar));
+    bar.addEventListener('mousedown',e=>{ if(!e.target.classList.contains('res-h')) startResBarDrag(e,i,k,bi,'move',bar); });
+    bar.addEventListener('contextmenu',e=>{ e.preventDefault(); e.stopPropagation(); openResBarMenu(e,i,k,bi); });
+    attachTip(bar,()=>resBarTip(h,rc,b));
+    row.appendChild(bar);
+  });
+  // Actual hours: a white box over the whole week or billing period
+  const {lane}=lanesOf(res.actuals);
+  res.actuals.forEach((a,ai)=>{
+    let x0=Math.max(0,xForDate(a.start)), x1=Math.min(ganttTotalPx,xForDate(fmt(addDay(a.end))));
+    if(x1<=x0) return;
+    const w=Math.max(6,x1-x0-2);
+    const box=document.createElement('div');
+    box.className='fee-label pill ovr inv-box res-act-box';
+    box.dataset.ai=ai;
+    box.style.left=(x0+1)+'px'; box.style.width=w+'px';
+    box.style.top=(INV_LANE_TOP+lane[ai]*(ACT_LANE_H+ACT_LANE_GAP))+'px';
+    box.style.border=`1px solid ${h.color}`; box.style.color=h.color;
+    const opts=[actText(a), fmtNum(actVal(a).v)];
+    box.textContent=opts.find(t=>textWidth(t,9,700)<=w-5)||'';
+    box.addEventListener('click',e=>{ e.stopPropagation(); openResActualEdit(e,i,k,ai); });
+    box.addEventListener('contextmenu',e=>{ e.preventDefault(); e.stopPropagation(); openResActMenu(e,i,k,ai); });
+    attachTip(box,()=>{
+      const plan=plannedHours(res,a.start,a.end);
+      const H=actHours(a);
+      return `<strong>${escHtml(resLabel(res))}</strong><br>Actual <strong>${actText(a)}</strong>${a.days!=null?` (${fmtHours(H)} at ${fmtNum(hoursPerDay)} h/day)`:''}`
+        +`<br>For ${fmtDisplay(a.start)} to ${fmtDisplay(a.end)}`
+        +`<br>${money2(Math.round(H*res.rate*100))} at ${money2(Math.round(res.rate*100))}/hr`
+        +`<br><span style="opacity:.75">Planned for these dates: ${fmtHours(plan)} (replaced)</span>`
+        +`<br><span style="opacity:.6;font-style:italic">Click to change, right-click for options</span>`;
+    });
+    row.appendChild(box);
+  });
+  attachResHover(row);
+  row.addEventListener('mousedown',e=>{
+    if(e.button!==0 || e.target!==row && !e.target.classList.contains('res-hover')) return;
+    const y=e.clientY-row.getBoundingClientRect().top;
+    if(y<INV_LANE_TOP-2) startResDraw(e,i,k,row);
+  });
+  row.addEventListener('click',e=>{
+    if(e.button!==0 || e.target!==row && !e.target.classList.contains('res-hover')) return;
+    const y=e.clientY-row.getBoundingClientRect().top;
+    if(y>=INV_LANE_TOP-2) openResActualAt(e,i,k,row);
+  });
+  row.addEventListener('contextmenu',e=>openResRowMenu(e,i,k,row));
+  return row;
+}
+function fmtNum(v){ return String(Math.round((+v||0)*100)/100); }
+// A resource's display name: name, position, or both ("Aiden Morris, Associate")
+function resLabel(res, fallback){
+  const a=(res.name||'').trim(), b=(res.position||'').trim();
+  return a&&b ? `${a}, ${b}` : (a||b||fallback||'(unnamed)');
+}
+// Time is entered in hours or days. A bar keeps the unit it was entered in.
+function barVal(b){ return b.dpw!=null ? {v:b.dpw, unit:'d'} : {v:+b.hpw||0, unit:'h'}; }
+function makeBar(start,end,v,unit){ return unit==='d' ? {start,end,dpw:v} : {start,end,hpw:v}; }
+function barText(b){ const {v,unit}=barVal(b); return `${fmtNum(v)} ${unit}/wk`; }
+function actVal(a){ return a.days!=null ? {v:a.days, unit:'d'} : {v:+a.hours||0, unit:'h'}; }
+function actText(a){ return a.days!=null ? `${fmtNum(a.days)} d` : fmtHours(a.hours); }
+function setActVal(a,v,unit){ delete a.hours; delete a.days; if(unit==='d') a.days=v; else a.hours=v; }
+let unitPref='h';
+try{ const u=localStorage.getItem('ForecastTool:unit'); if(u==='d'||u==='h') unitPref=u; }catch(e){}
+function rememberUnit(u){ unitPref=u; try{ localStorage.setItem('ForecastTool:unit',u); }catch(e){} }
+// A new bar starts with the resource's last figure, in its unit
+function newBarDefault(res){
+  if(!res.bars.length) return {v:'', unit:unitPref};
+  const b=barVal(res.bars[res.bars.length-1]); return {v:fmtNum(b.v), unit:b.unit};
+}
+// Where a bar's figure goes: its first day not covered by actual hours
+function resLabelDate(b, covered){
+  for(let d=dayStart(b.start), e=dayStart(b.end); d<=e; d=addDay(d)){ const s=fmt(d); if(!covered.has(s)) return s; }
+  return null;
+}
+function plannedHours(res, start, end){
+  let n=0;
+  res.bars.forEach(b=>{ const a=b.start>start?b.start:start, z=b.end<end?b.end:end; if(a<=z) eachDay(a,z,d=>{ if(isWorkday(d)) n+=barHpw(b)/5; }); });
+  return n;
+}
+function resBarTip(h, rc, b){
+  const res=rc.res, wd=workdaysInRange(parseDate(b.start),parseDate(b.end));
+  const plan=barHpw(b)/5*wd;
+  const per = b.dpw!=null ? `${fmtNum(b.dpw)} days per week (${fmtHours(barHpw(b))} at ${fmtNum(hoursPerDay)} h/day)` : `${fmtNum(b.hpw)} hours per week`;
+  let html=`<strong>${escHtml(resLabel(res,'(unnamed resource)'))}</strong><br>${per}<br>${fmtDisplay(b.start)} to ${fmtDisplay(b.end)}`
+    +`<br>${wd} working day${wd!==1?'s':''} · ${fmtHours(plan)} planned`;
+  if(res.rate) html+=`<br>${money2(Math.round(plan*res.rate*100))} at ${money2(Math.round(res.rate*100))}/hr`;
+  else html+=`<br><span style="opacity:.7">No hourly rate entered</span>`;
+  const cov=[]; eachDay(b.start,b.end,d=>{ if(rc.covered.has(d)&&isWorkday(d)) cov.push(d); });
+  if(cov.length) html+=`<br><span style="opacity:.75">${cov.length} working day${cov.length!==1?'s are':' is'} covered by actual hours, which replace the plan there</span>`;
+  return html+`<br><span style="opacity:.6;font-style:italic">Drag to move, drag the ends to stretch, click to change the time, right-click to split</span>`;
+}
+
+// Hover: a dashed box in the top band shows where a click adds a bar; in
+// the lower band, which period a click enters actual hours for.
+function attachResHover(row){
+  let box=null;
+  row.addEventListener('mousemove', e=>{
+    const onEmpty = e.target===row || e.target.classList.contains('res-hover');
+    if(!onEmpty || resDrawing){ if(box) box.style.display='none'; return; }
+    const rect=row.getBoundingClientRect(), x=e.clientX-rect.left, y=e.clientY-rect.top;
+    const key=periodKey(dateAtX(x),breakdownView), b=periodBounds(key,breakdownView);
+    const x0=Math.max(0,xForDate(b.start)), x1=Math.min(ganttTotalPx,xForDate(b.next));
+    if(!box){ box=document.createElement('div'); box.className='res-hover'; row.appendChild(box); }
+    const top=y<INV_LANE_TOP-2;
+    box.classList.toggle('top',top);
+    box.textContent=top?'+ bar':'+';
+    box.style.display='flex';
+    box.style.left=(x0+1)+'px'; box.style.width=Math.max(4,x1-x0-2)+'px';
+  });
+  row.addEventListener('mouseleave', ()=>{ if(box) box.style.display='none'; });
+}
+
+// ── Drawing a new bar: drag across the top band, or click for one period
+let resDrawing=false;
+function freeGap(res, date, skip){
+  let lo=null, hi=null;
+  res.bars.forEach((b,bi)=>{
+    if(bi===skip) return;
+    if(b.end<date && (!lo||b.end>lo)) lo=b.end;
+    if(b.start>date && (!hi||b.start<hi)) hi=b.start;
+  });
+  const inside=res.bars.some((b,bi)=>bi!==skip&&b.start<=date&&b.end>=date);
+  return {inside, after:lo?fmt(addDay(lo,1)):null, before:hi?fmt(addDay(hi,-1)):null};
+}
+function startResDraw(e, i, k, row){
+  e.preventDefault(); hideTooltip(); closeAllPopups();
+  const res=headings[i].resources[k];
+  const rect=row.getBoundingClientRect(), x0=e.clientX-rect.left;
+  const anchor=dateAtX(x0), gap=freeGap(res,anchor);
+  if(gap.inside) return;
+  resDrawing=true;
+  const ghost=document.createElement('div'); ghost.className='res-ghost'; row.appendChild(ghost);
+  let s=anchor, en=anchor, moved=false;
+  const clamp=(a,z)=>{ if(gap.after&&a<gap.after) a=gap.after; if(gap.before&&z>gap.before) z=gap.before; return [a,z]; };
+  const paint=()=>{ ghost.style.left=xForDate(s)+'px'; ghost.style.width=Math.max(4,xForDate(en)+pxPerDay-xForDate(s))+'px'; };
+  const onMove=me=>{
+    const x=me.clientX-rect.left;
+    if(!moved && Math.abs(x-x0)<4) return;
+    moved=true;
+    const d=dateAtX(Math.max(0,x));
+    [s,en]=clamp(d<anchor?d:anchor, d<anchor?anchor:d);
+    paint();
+    showTipAt(me, `${fmtDisplay(s)} to ${fmtDisplay(en)}<br>${workdaysInRange(parseDate(s),parseDate(en))} working days`);
+  };
+  const onUp=me=>{
+    document.removeEventListener('mousemove',onMove); document.removeEventListener('mouseup',onUp);
+    resDrawing=false; hideTooltip();
+    if(!moved){
+      // A click: the whole week or billing period, within the free gap
+      const b=periodBounds(periodKey(anchor,breakdownView),breakdownView);
+      [s,en]=clamp(b.start,b.end);
+    }
+    if(s>en){ ghost.remove(); return; }
+    paint();
+    const def=newBarDefault(res);
+    openHoursPopup({x:me.clientX, y:me.clientY,
+      title:resLabel(res,'New bar'), sub:`Time per week, ${fmtDisplay(s)} to ${fmtDisplay(en)}`, value:def.v, unit:def.unit, perWeek:true,
+      hint:v=>barHint(res,s,en,v),
+      onApply:(v,u)=>{ res.bars.push(makeBar(s,en,v,u)); res.bars.sort((a,b)=>a.start<b.start?-1:1); refresh(); },
+      onClose:()=>ghost.remove()});
+  };
+  document.addEventListener('mousemove',onMove); document.addEventListener('mouseup',onUp);
+}
+function barHint(res,s,en,v){
+  const wd=workdaysInRange(parseDate(s),parseDate(en));
+  if(v===null) return '';
+  const hrs=v/5*wd;   // v is hours per week
+  return `${fmtHours(v)} per week. ${wd} working day${wd!==1?'s':''}, so ${fmtHours(hrs)} in all`+(res.rate?` (${money2(Math.round(hrs*res.rate*100))} at ${money2(Math.round(res.rate*100))}/hr).`:'. Enter an hourly rate on the left to cost it.')
+    +' Part weeks and public holidays are pro rata.';
+}
+
+// ── Moving and stretching a bar (whole days; never over a neighbour)
+function startResBarDrag(e, i, k, bi, mode, barEl){
+  if(e.button!==0) return;
+  e.preventDefault(); e.stopPropagation(); hideTooltip(); closeAllPopups();
+  const res=headings[i].resources[k], b=res.bars[bi];
+  let prevEnd=null, nextStart=null;
+  res.bars.forEach((o,oi)=>{ if(oi===bi) return; if(o.end<b.start&&(!prevEnd||o.end>prevEnd)) prevEnd=o.end; if(o.start>b.end&&(!nextStart||o.start<nextStart)) nextStart=o.start; });
+  const sx=e.clientX; let moved=false, ns=b.start, ne=b.end;
+  const add=(d,n)=>fmt(addDay(d,n));
+  const onMove=me=>{
+    const dx=me.clientX-sx;
+    if(!moved && Math.abs(dx)<3) return;
+    moved=true; barEl.classList.add('dragging');
+    let d=Math.round(dx/pxPerDay);
+    if(mode==='move'){
+      if(prevEnd && add(b.start,d)<=prevEnd) d=daysBetween(b.start,prevEnd)+1;
+      if(nextStart && add(b.end,d)>=nextStart) d=daysBetween(b.end,nextStart)-1;
+      ns=add(b.start,d); ne=add(b.end,d);
+    } else if(mode==='l'){
+      ns=add(b.start,d); if(ns>b.end) ns=b.end; if(prevEnd&&ns<=prevEnd) ns=add(prevEnd,1); ne=b.end;
+    } else {
+      ne=add(b.end,d); if(ne<b.start) ne=b.start; if(nextStart&&ne>=nextStart) ne=add(nextStart,-1); ns=b.start;
+    }
+    barEl.style.left=xForDate(ns)+'px'; barEl.style.width=Math.max(6,xForDate(ne)+pxPerDay-xForDate(ns))+'px';
+    showTipAt(me, `${fmtDisplay(ns)} to ${fmtDisplay(ne)}<br>${workdaysInRange(parseDate(ns),parseDate(ne))} working days`);
+  };
+  const onUp=me=>{
+    document.removeEventListener('mousemove',onMove); document.removeEventListener('mouseup',onUp);
+    hideTooltip();
+    if(!moved){ if(mode==='move') editResBar(me,i,k,bi); return; }
+    if(ns===b.start && ne===b.end){ refresh(); return; }
+    b.start=ns; b.end=ne;
+    res.bars.sort((x,y)=>x.start<y.start?-1:1);
+    refresh();
+  };
+  document.addEventListener('mousemove',onMove); document.addEventListener('mouseup',onUp);
+}
+function showTipAt(e, html){
+  const tip=document.getElementById('tooltip');
+  tip.innerHTML=html; tip.style.display='block'; moveTooltip(e);
+}
+
+// Change a bar's hours. Where actual hours cover the start of the bar, the
+// figure sits after them, and a change applies from there on: the bar is
+// split, and the covered part keeps its old figure.
+function editResBar(e, i, k, bi){
+  const h=headings[i], res=h.resources[k], b=res.bars[bi];
+  const covered=resActualCovered(res);
+  let from=resLabelDate(b,covered)||b.start;
+  const split = from>b.start;
+  const cur=barVal(b);
+  openHoursPopup({x:e.clientX, y:e.clientY,
+    title:resLabel(res,'Resource'),
+    sub: split ? `Time per week from ${fmtDisplay(from)} to ${fmtDisplay(b.end)}` : `Time per week, ${fmtDisplay(b.start)} to ${fmtDisplay(b.end)}`,
+    value:fmtNum(cur.v), unit:cur.unit, perWeek:true,
+    hint:v=>(split?`Before ${fmtDisplay(from)} the bar is covered by actual hours and keeps ${barText(b)}. `:'')+barHint(res,from,b.end,v),
+    onApply:(v,u)=>{
+      if(v===cur.v && u===cur.unit) return;
+      if(split) res.bars.splice(bi,1,{...b,end:fmt(addDay(from,-1))},makeBar(from,b.end,v,u));
+      else res.bars.splice(bi,1,makeBar(b.start,b.end,v,u));
+      refresh();
+    },
+    removeLabel:'Remove bar',
+    onRemove:()=>{ res.bars.splice(bi,1); refresh(); }});
+}
+// Split a bar at a day: that day starts the second part. Both parts keep the
+// same time per week and can then be changed on their own.
+function splitResBar(i, k, bi, date){
+  const res=headings[i].resources[k], b=res.bars[bi];
+  if(!b || date<=b.start || date>b.end) return;
+  res.bars.splice(bi,1,{...b,end:fmt(addDay(date,-1))},{...b,start:date});
+  refresh();
+  flashStatus(`Bar split at ${fmtDisplay(date)}. Click either part to change its time.`);
+}
+
+// ── Actual hours for a week or billing period
+function openResActualAt(e, i, k, row){
+  hideTooltip(); closeAllPopups();
+  const res=headings[i].resources[k], mode=breakdownView;
+  const key=periodKey(dateAtX(e.clientX-row.getBoundingClientRect().left),mode), b=periodBounds(key,mode);
+  const ai=res.actuals.findIndex(a=>a.start===b.start&&a.end===b.end);
+  if(ai>=0) return openResActualEdit(e,i,k,ai);
+  resActualPopup(e,i,k,{start:b.start,end:b.end,mode},null,periodName(key,mode,true));
+}
+function openResActualEdit(e, i, k, ai){
+  hideTooltip(); closeAllPopups();
+  const a=headings[i].resources[k].actuals[ai];
+  resActualPopup(e,i,k,a,ai,null);
+}
+function resActualPopup(e, i, k, t, ai, name){
+  const res=headings[i].resources[k];
+  const plan=plannedHours(res,t.start,t.end);
+  const others=res.actuals.filter((a,j)=>j!==ai && a.start<=t.end && a.end>=t.start);
+  openHoursPopup({x:e.clientX, y:e.clientY,
+    title:resLabel(res,'Resource'),
+    sub:`Actual time, ${name?name+' ':''}(${fmtDisplay(t.start)} to ${fmtDisplay(t.end)})`,
+    value: ai===null?'':fmtNum(actVal(t).v), unit: ai===null?unitPref:actVal(t).unit,
+    hint:v=>{
+      let m=`Planned for these dates: ${fmtHours(plan)}. Actual hours replace the plan for every day in this range.`;
+      if(v!==null && res.rate) m+=` ${fmtHours(v)} costs ${money2(Math.round(v*res.rate*100))}.`;
+      if(others.length) m+=` Also entered over part of this range: ${others.map(a=>`${actText(a)} (${fmtDisplay(a.start)} to ${fmtDisplay(a.end)})`).join(', ')}. Both count.`;
+      return m;
+    },
+    allowEmptyRemove: ai!==null,
+    onApply:(v,u)=>{
+      if(ai===null){ const a={start:t.start,end:t.end}; setActVal(a,v,u); a.mode=t.mode==='billing'?'billing':'weekly'; res.actuals.push(a); }
+      else setActVal(res.actuals[ai],v,u);
+      res.actuals.sort((x,y)=>x.start<y.start?-1:x.start>y.start?1:0);
+      refresh();
+    },
+    removeLabel: ai===null?null:'Remove',
+    onRemove: ai===null?null:()=>{ res.actuals.splice(ai,1); refresh(); }});
+}
+
+// ── Hours popup (bars and actual hours)
+let hrsCfg=null;
+function parseHours(str){
+  const s=String(str||'').trim().toLowerCase().replace(/,/g,'').replace(/\s*(h|hr|hrs|hours|h\/wk|d|day|days|d\/wk)\s*$/,'');
+  if(s==='') return '';
+  if(!/^\d*\.?\d*$/.test(s) || s==='.') return null;
+  const v=Math.round(parseFloat(s)*100)/100;
+  return isFinite(v)&&v>=0 ? v : null;
+}
+// cfg: {x, y, title, sub, value, unit:'h'|'d', perWeek, hint(hours), onApply(v,unit),
+//       onRemove?, removeLabel?, allowEmptyRemove?, onClose?}
+// Hours | Days switches the unit; the figure typed so far is converted with
+// the hours-per-day setting, so nothing has to be re-entered.
+let hpUnit='h';
+function openHoursPopup(cfg){
+  closeAllPopups();
+  hrsCfg=cfg;
+  document.getElementById('hp-title').textContent=cfg.title;
+  document.getElementById('hp-sub').textContent=cfg.sub;
+  const inp=document.getElementById('hp-input');
+  inp.value=cfg.value; inp.classList.remove('invalid');
+  setHpUnit(cfg.unit==='d'?'d':'h', false);
+  const rm=document.getElementById('hp-remove');
+  rm.style.display=cfg.onRemove?'':'none'; rm.textContent=cfg.removeLabel||'Remove';
+  const pop=document.getElementById('hrs-popup');
+  pop.classList.add('visible');
+  const pr=pop.getBoundingClientRect();
+  pop.style.left=Math.max(8,Math.min(cfg.x, window.innerWidth-pr.width-8))+'px';
+  pop.style.top=Math.max(8,Math.min(cfg.y+8, window.innerHeight-pr.height-8))+'px';
+  updateHoursHint();
+  inp.focus(); inp.select();
+}
+function setHpUnit(u, convert){
+  const inp=document.getElementById('hp-input');
+  if(convert && u!==hpUnit){
+    const v=parseHours(inp.value);
+    if(typeof v==='number') inp.value=fmtNum(u==='d' ? v/hoursPerDay : v*hoursPerDay);
+    rememberUnit(u);
+  }
+  hpUnit=u;
+  document.getElementById('hp-uh').classList.toggle('active',u==='h');
+  document.getElementById('hp-ud').classList.toggle('active',u==='d');
+  document.getElementById('hp-unit').textContent=(u==='d'?'d':'h')+(hrsCfg&&hrsCfg.perWeek?'/wk':'');
+  if(convert){ updateHoursHint(); inp.focus(); }
+}
+function hpHours(v){ return hpUnit==='d' ? v*hoursPerDay : v; }
+function updateHoursHint(){
+  if(!hrsCfg) return;
+  const inp=document.getElementById('hp-input'), v=parseHours(inp.value);
+  inp.classList.toggle('invalid', v===null);
+  const hint=document.getElementById('hp-hint');
+  hint.className='op-hint'+(v===null?' warn':'');
+  const dayNote = hpUnit==='d' ? `${fmtNum(hoursPerDay)} h per day (Settings). ` : '';
+  hint.textContent = v===null ? `Not recognised. Enter ${hpUnit==='d'?'days, e.g. 3 or 2.5':'hours, e.g. 16 or 7.5'}.`
+    : dayNote + (hrsCfg.hint ? hrsCfg.hint(v===''?null:hpHours(v)) : '');
+}
+function commitHours(){
+  if(!hrsCfg) return;
+  const v=parseHours(document.getElementById('hp-input').value);
+  if(v===null) return;
+  const cfg=hrsCfg, u=hpUnit;
+  if(v===''){
+    if(cfg.allowEmptyRemove && cfg.onRemove){ closeHoursPopup(); cfg.onRemove(); }
+    return;
+  }
+  closeHoursPopup();
+  cfg.onApply(v,u);
+}
+function removeHours(){ const cfg=hrsCfg; if(!cfg||!cfg.onRemove) return; closeHoursPopup(); cfg.onRemove(); }
+function closeHoursPopup(){
+  const pop=document.getElementById('hrs-popup');
+  if(document.activeElement && pop.contains(document.activeElement)) document.activeElement.blur();
+  pop.classList.remove('visible');
+  const cfg=hrsCfg; hrsCfg=null;
+  if(cfg && cfg.onClose) cfg.onClose();
+}
+function closeAllPopups(){ closeCtx(); closeOverridePopup(); closeHoursPopup(); }
+document.getElementById('hp-input').addEventListener('input',updateHoursHint);
+document.getElementById('hp-input').addEventListener('keydown',e=>{
+  if(e.key==='Enter'){ e.preventDefault(); commitHours(); }
+  if(e.key==='Escape'){ e.preventDefault(); e.stopPropagation(); closeHoursPopup(); }
+});
+document.addEventListener('mousedown',e=>{
+  const pop=document.getElementById('hrs-popup');
+  if(pop.classList.contains('visible') && !pop.contains(e.target)) closeHoursPopup();
+});
+
+// ── Menus
+let resCtx=null;
+function openResHeadMenu(e, i){
+  e.preventDefault(); hideTooltip(); closeAllPopups();
+  resCtx={i};
+  const h=headings[i], n=(h.resources||[]).length;
+  document.getElementById('ctx-title').textContent='Resourcing plan';
+  const items=[`<div class="ctx-item" onclick="closeCtx();addResource(${i})">＋ Add resource</div>`];
+  const others=headings.map((x,j)=>({x,j})).filter(o=>o.j!==i);
+  if(n && others.length){
+    items.push('<div class="ctx-sep"></div>',`<div class="ctx-title" style="padding-top:4px">Copy resourcing to</div>`);
+    others.forEach(o=>items.push(`<div class="ctx-item" onclick="closeCtx();copyResourcing(${i},${o.j})"><span class="tt-dot" style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${o.x.color}"></span>${escHtml(o.x.name||'(unnamed heading)')}</div>`));
+  } else if(!n) items.push(`<div class="ctx-item info">Add resources here, then right-click this row to copy them to another heading.</div>`);
+  items.push('<div class="ctx-sep"></div>',`<div class="ctx-item info">The figures on this row are the cost per ${unitName(breakdownView)} of every resource in this stage: hours times hourly rate.</div>`);
+  showMenu(e,items);
+}
+// Copy a heading's resources (names, rates and bars) to another heading.
+// Actual hours are not copied: they are time already booked to this stage.
+// Bars can keep their dates, or move by whole weeks so they start with the
+// other heading (whole weeks keep each bar on the same weekdays).
+async function copyResourcing(from, to){
+  const src=headings[from], dst=headings[to];
+  if(!src||!dst||!(src.resources||[]).length) return;
+  const a=headingSpan(src).start, b=headingSpan(dst).start;
+  const weeks = a&&b ? Math.round(daysBetween(a,b)/7) : 0;
+  const n=src.resources.length, nb=src.resources.reduce((t,r)=>t+r.bars.length,0);
+  const buttons=[{label:'Cancel',value:null},{label:'Keep the same dates',value:'same',primary:!weeks}];
+  if(weeks) buttons.push({label:`Move ${Math.abs(weeks)} week${Math.abs(weeks)!==1?'s':''} ${weeks>0?'later':'earlier'}`,value:'shift',primary:true});
+  const choice=await showChoice('Copy resourcing',
+    `<p>Copy ${n} resource${n!==1?'s':''} and ${nb} bar${nb!==1?'s':''} from <strong>${escHtml(src.name)}</strong> to <strong>${escHtml(dst.name)}</strong>.</p>
+     ${weeks?`<p style="margin-top:8px"><strong>${escHtml(dst.name)}</strong> starts ${fmtDisplay(b)}, ${Math.abs(weeks)} week${Math.abs(weeks)!==1?'s':''} ${weeks>0?'after':'before'} this heading (${fmtDisplay(a)}). The bars can move with it, by whole weeks so they keep their weekdays.</p>`:''}
+     <p style="margin-top:8px" class="muted">Names, rates and bars are copied. Actual hours are not, as they are time already booked to this stage.${(dst.resources||[]).length?` They are added below the ${dst.resources.length} resource${dst.resources.length!==1?'s':''} already there.`:''}</p>`,
+    buttons);
+  if(!choice) return;
+  const shift=choice==='shift' ? weeks*7 : 0;
+  const mv=d=>shift?fmt(addDay(d,shift)):d;
+  dst.resources=(dst.resources||[]).concat(src.resources.map(r=>({id:newResId(), name:r.name, position:r.position||'', rate:r.rate,
+    bars:r.bars.map(x=>({...x,start:mv(x.start),end:mv(x.end)})), actuals:[]})));
+  refresh();
+  flashStatus(`Resourcing copied to ${dst.name}${shift?`, moved ${Math.abs(weeks)} week${Math.abs(weeks)!==1?'s':''}`:''}. Undo takes it back.`);
+}
+function openResRowMenu(e, i, k, row){
+  e.preventDefault(); hideTooltip(); closeAllPopups();
+  const res=headings[i].resources[k], mode=breakdownView;
+  const key=periodKey(dateAtX(e.clientX-row.getBoundingClientRect().left),mode), b=periodBounds(key,mode);
+  resCtx={i,k,b,key,mode,x:e.clientX,y:e.clientY};
+  const here=res.actuals.filter(a=>a.start<=b.end&&a.end>=b.start);
+  const gap=freeGap(res,b.start);
+  document.getElementById('ctx-title').textContent=`${resLabel(res,'Resource')} · ${periodName(key,mode,false)}`;
+  const items=[];
+  if(!res.bars.some(x=>x.start<=b.end&&x.end>=b.start)) items.push(`<div class="ctx-item" onclick="resCtxAddBar()">＋ Add a bar for this ${unitName(mode)}…</div>`);
+  items.push(`<div class="ctx-item" onclick="resCtxActual()">✎ ${here.some(a=>a.start===b.start&&a.end===b.end)?'Change':'Enter'} actual hours for this ${unitName(mode)}…</div>`);
+  if(here.length) items.push(`<div class="ctx-item" onclick="resCtxClearPeriod()">↺ Remove actual hours in this ${unitName(mode)}</div>`);
+  items.push('<div class="ctx-sep"></div>');
+  if(res.actuals.length) items.push(`<div class="ctx-item danger" onclick="resCtxClearAll()">✕ Remove all actual hours for this resource</div>`);
+  items.push(`<div class="ctx-item danger" onclick="closeCtx();deleteResource(${i},${k})">✕ Delete this resource</div>`);
+  showMenu(e,items);
+}
+function resCtxAddBar(){
+  closeCtx(); if(!resCtx) return;
+  const {i,k,b}=resCtx, res=headings[i].resources[k];
+  const gap=freeGap(res,b.start);
+  let s=b.start, en=b.end;
+  if(gap.after&&s<gap.after) s=gap.after;
+  if(gap.before&&en>gap.before) en=gap.before;
+  if(s>en) return;
+  const def=newBarDefault(res);
+  openHoursPopup({x:resCtx.x,y:resCtx.y,title:resLabel(res,'New bar'),sub:`Time per week, ${fmtDisplay(s)} to ${fmtDisplay(en)}`,value:def.v,unit:def.unit,perWeek:true,
+    hint:v=>barHint(res,s,en,v), onApply:(v,u)=>{ res.bars.push(makeBar(s,en,v,u)); res.bars.sort((a,c)=>a.start<c.start?-1:1); refresh(); }});
+}
+function resCtxActual(){
+  closeCtx(); if(!resCtx) return;
+  const {i,k,b,key,mode}=resCtx, res=headings[i].resources[k];
+  const ai=res.actuals.findIndex(a=>a.start===b.start&&a.end===b.end);
+  const ev={clientX:resCtx.x, clientY:resCtx.y};
+  if(ai>=0) resActualPopup(ev,i,k,res.actuals[ai],ai,null);
+  else resActualPopup(ev,i,k,{start:b.start,end:b.end,mode},null,periodName(key,mode,true));
+}
+function resCtxClearPeriod(){
+  closeCtx(); if(!resCtx) return;
+  const {i,k,b}=resCtx, res=headings[i].resources[k];
+  res.actuals=res.actuals.filter(a=>!(a.start<=b.end&&a.end>=b.start));
+  refresh();
+}
+function resCtxClearAll(){
+  closeCtx(); if(!resCtx) return;
+  headings[resCtx.i].resources[resCtx.k].actuals=[];
+  refresh(); flashStatus('Actual hours removed. Undo brings them back.');
+}
+function openResBarMenu(e, i, k, bi){
+  hideTooltip(); closeAllPopups();
+  const res=headings[i].resources[k], b=res.bars[bi];
+  const row=e.currentTarget.closest('.gantt-row');
+  const at=dateAtX(e.clientX-row.getBoundingClientRect().left);
+  resCtx={i,k,bi,x:e.clientX,y:e.clientY,at};
+  document.getElementById('ctx-title').textContent=`${resLabel(res,'Resource')} · ${barText(b)}`;
+  const canSplit = at>b.start && at<=b.end;
+  showMenu(e,[`<div class="ctx-item" onclick="closeCtx();editResBar({clientX:resCtx.x,clientY:resCtx.y},resCtx.i,resCtx.k,resCtx.bi)">✎ Change time per week…</div>`,
+    canSplit ? `<div class="ctx-item" onclick="closeCtx();splitResBar(resCtx.i,resCtx.k,resCtx.bi,resCtx.at)">✂ Split the bar here (${escHtml(fmtDisplay(at))})</div>`
+             : `<div class="ctx-item info">Right-click inside the bar, after its first day, to split it there.</div>`,
+    `<div class="ctx-item danger" onclick="closeCtx();headings[resCtx.i].resources[resCtx.k].bars.splice(resCtx.bi,1);refresh()">✕ Remove this bar</div>`]);
+}
+function openResActMenu(e, i, k, ai){
+  hideTooltip(); closeAllPopups();
+  const res=headings[i].resources[k], a=res.actuals[ai];
+  resCtx={i,k,ai,x:e.clientX,y:e.clientY};
+  document.getElementById('ctx-title').textContent=`${resLabel(res,'Resource')} · ${actText(a)}`;
+  showMenu(e,[`<div class="ctx-item" onclick="closeCtx();openResActualEdit({clientX:resCtx.x,clientY:resCtx.y},resCtx.i,resCtx.k,resCtx.ai)">✎ Change actual time…</div>`,
+    `<div class="ctx-item danger" onclick="closeCtx();headings[resCtx.i].resources[resCtx.k].actuals.splice(resCtx.ai,1);refresh()">↺ Remove these actual hours</div>`]);
+}
+function openResLeftMenu(e, i, k){
+  if(e.target.tagName==='INPUT') return;
+  e.preventDefault(); hideTooltip(); closeAllPopups();
+  const n=headings[i].resources.length;
+  document.getElementById('ctx-title').textContent=resLabel(headings[i].resources[k],'Resource');
+  const items=[`<div class="ctx-item" onclick="closeCtx();addResource(${i},${k+1})">＋ Insert resource below</div>`];
+  if(k>0) items.push(`<div class="ctx-item" onclick="closeCtx();moveResource(${i},${k},-1)">↑ Move up</div>`);
+  if(k<n-1) items.push(`<div class="ctx-item" onclick="closeCtx();moveResource(${i},${k},1)">↓ Move down</div>`);
+  items.push('<div class="ctx-sep"></div>',`<div class="ctx-item danger" onclick="closeCtx();deleteResource(${i},${k})">✕ Delete this resource</div>`);
+  showMenu(e,items);
+}
+
+// ── Left panel: resource rows (name, hourly rate, to date over remaining)
+function leftResourceRow(h, i, r, spec){
+  const k=spec.k, res=h.resources[k], rc=r.res[k];
+  const sr=document.createElement('div');
+  sr.className='task-row res-row';
+  sr.dataset.idx=i; sr.dataset.rk=spec.rk; sr.dataset.k=k;
+  sr.style.height=spec.ht+'px';
+  const fee=splitCell(rc.toDate, rc.remaining,
+    `To date: ${fmtHours(rc.hToDate)} (actual hours, plus planned hours before today where none are entered)`,
+    `Remaining: ${fmtHours(rc.hRemaining)} planned from today on`);
+  sr.innerHTML=`
+    <div class="heading-stripe" style="background:${h.color}"></div>
+    <div class="task-cell" style="padding:0"><button class="heading-del-btn" tabindex="-1" onclick="deleteResource(${i},${k})" title="Delete this resource" style="color:${h.color}">×</button></div>
+    <div class="task-cell row-handle" title="Drag to reorder" onmousedown="startResDrag(event,${i},${k})">⠿</div><div class="task-cell"></div>
+    <div class="task-cell res-who" style="overflow:hidden"><input class="res-input res-name" type="text" autocomplete="off" spellcheck="false" maxlength="80"
+      data-i="${i}" data-k="${k}" data-f="name" value="${escHtml(res.name)}" placeholder="Resource name" title="Resource name"><input class="res-input res-pos" type="text" autocomplete="off" spellcheck="false" maxlength="60"
+      data-i="${i}" data-k="${k}" data-f="position" value="${escHtml(res.position||'')}" placeholder="Position" title="Position, e.g. Director, Associate, Graduate"></div>
+    <div class="task-cell fee-cell"><i class="fee-cap">$/hr</i><input class="res-input res-rate" type="text" inputmode="decimal" autocomplete="off" spellcheck="false"
+      data-i="${i}" data-k="${k}" data-f="rate" value="${res.rate?money2(Math.round(res.rate*100)):''}" placeholder="$0.00" title="Hourly rate for this resource"></div>
+    <div class="task-cell fee-cell">${fee}</div>
+    <div class="task-cell"></div>`;
+  sr.querySelectorAll('.res-input').forEach(el=>{
+    el.addEventListener('focus',()=>resFocus(el));
+    el.addEventListener('keydown',e=>resKey(e,el));
+    el.addEventListener('blur',e=>resBlur(e,el));
+  });
+  sr.addEventListener('contextmenu',e=>openResLeftMenu(e,i,k));
+  return sr;
+}
+// Small "+ Add resource" row at the bottom of the resourcing section
+function leftAddRow(h, i, spec){
+  const sr=document.createElement('div');
+  sr.className='task-row res-add-left';
+  sr.dataset.idx=i; sr.dataset.rk=spec.rk;
+  sr.style.height=spec.ht+'px';
+  sr.innerHTML=`<div class="heading-stripe" style="background:${h.color}"></div>
+    <div class="task-cell"></div><div class="task-cell"></div><div class="task-cell"></div>
+    <div class="task-cell"><button class="res-add-btn" tabindex="-1" onclick="addResource(${i})" title="Add a person to this stage, then draw bars of time per week on their row in the chart">＋ Add resource</button></div>
+    <div class="task-cell"></div><div class="task-cell"></div><div class="task-cell"></div>`;
+  sr.addEventListener('contextmenu', e=>openResHeadMenu(e,i));
+  return sr;
+}
+
+// Drag the ⠿ handle to move a resource up or down within its heading
+function startResDrag(e, i, k){
+  if(e.button!==0) return;
+  e.preventDefault(); hideTooltip(); closeAllPopups();
+  const body=document.getElementById('left-body');
+  const rows=[...body.querySelectorAll(`.res-row[data-idx="${i}"]`)];
+  const src=rows[k]; if(!src) return;
+  src.classList.add('row-dragging');
+  const grow=document.querySelector(`#gantt-rows [data-rk="${i}p${k}"]`); if(grow) grow.classList.add('row-dragging');
+  document.body.style.cursor='grabbing';
+  let to=null;
+  const clear=()=>rows.forEach(r=>r.classList.remove('row-drop-above','row-drop-below'));
+  const onMove=me=>{
+    clear(); to=null;
+    rows.forEach((r,j)=>{
+      const b=r.getBoundingClientRect();
+      const first=j===0, last=j===rows.length-1;
+      if((me.clientY>=b.top||first) && (me.clientY<b.bottom||last) && to===null){
+        const after=me.clientY>(b.top+b.bottom)/2;
+        to = after ? j+1 : j;
+        if(to!==k && to!==k+1) r.classList.add(after?'row-drop-below':'row-drop-above');
+      }
+    });
+  };
+  const onUp=()=>{
+    document.removeEventListener('mousemove',onMove); document.removeEventListener('mouseup',onUp);
+    document.body.style.cursor=''; clear(); src.classList.remove('row-dragging'); if(grow) grow.classList.remove('row-dragging');
+    if(to===null || to===k || to===k+1) return;
+    const list=headings[i].resources, [m]=list.splice(k,1);
+    list.splice(to>k?to-1:to, 0, m);
+    refresh();
+  };
+  document.addEventListener('mousemove',onMove); document.addEventListener('mouseup',onUp);
+}
+
+function resOf(el){ const h=headings[+el.dataset.i]; return h && h.resources ? h.resources[+el.dataset.k] : null; }
+function resFocus(el){
+  const res=resOf(el); if(!res) return;
+  el.dataset.orig = el.dataset.f==='rate' ? (res.rate?res.rate.toFixed(2):'') : (res[el.dataset.f]||'');
+  el.value=el.dataset.orig; el.classList.remove('invalid');
+  setTimeout(()=>{ if(el.value===el.dataset.orig) el.select(); },0);
+}
+function resKey(e,el){
+  if(e.key==='Enter'){ e.preventDefault(); el.blur(); }
+  else if(e.key==='Escape'){ e.preventDefault(); el.value=el.dataset.orig||''; el.blur(); }
+}
+// Commit on blur, and keep Tab moving through the re-render
+function focusKey(t){
+  if(!t || !t.classList) return null;
+  if(t.classList.contains('res-input')) return `.res-input[data-i="${t.dataset.i}"][data-k="${t.dataset.k}"][data-f="${t.dataset.f}"]`;
+  if(t.classList.contains('fee-input')) return `.fee-input[data-idx="${t.dataset.idx}"]`;
+  return null;
+}
+function resBlur(e,el){
+  const res=resOf(el); if(!res) return;
+  const next=focusKey(e.relatedTarget);
+  if(el.dataset.f==='name' || el.dataset.f==='position'){
+    const f=el.dataset.f, v=el.value.replace(/\s+/g,' ').trim().slice(0,f==='name'?80:60);
+    if(v===(res[f]||'')){ el.value=v; return; }
+    res[f]=v;
+  } else {
+    const v=parseMoney(el.value);
+    if(v===null){
+      el.classList.add('invalid'); flashStatus('Rate not recognised. Try 150 or $150.00.');
+      setTimeout(()=>{ el.value=res.rate?money2(Math.round(res.rate*100)):''; el.classList.remove('invalid'); },900);
+      return;
+    }
+    const nv=Math.max(0,Math.round(v*100)/100);
+    if(nv===res.rate){ el.value=nv?money2(Math.round(nv*100)):''; return; }
+    res.rate=nv;
+  }
+  refresh();
+  if(next){ const t=document.querySelector(next); if(t) t.focus(); }
+}
+function addResource(i, at){
+  const h=headings[i]; if(!h) return;
+  h.resources=h.resources||[];
+  const k = at==null ? h.resources.length : at;
+  h.resources.splice(k,0,{id:newResId(), name:'', position:'', rate:0, bars:[], actuals:[]});
+  refresh();
+  const el=document.querySelector(`.res-name[data-i="${i}"][data-k="${k}"]`);
+  if(el) el.focus();
+}
+function deleteResource(i,k){
+  const h=headings[i]; if(!h||!h.resources[k]) return;
+  const [gone]=h.resources.splice(k,1);
+  refresh();
+  flashStatus(`${resLabel(gone,'Resource')} deleted. Undo brings it back.`);
+}
+function moveResource(i,k,d){
+  const list=headings[i].resources, j=k+d;
+  if(j<0||j>=list.length) return;
+  [list[k],list[j]]=[list[j],list[k]];
+  refresh();
 }
 
 // ═══════════════════════════════════════════════════════
@@ -2238,7 +3314,7 @@ let undoStack=[], redoStack=[], lastState=null, undoEnabled=true;
 function stateSignature(){
   const figs={};
   allHeadings().forEach(h=>{ const f=figuresOf(h); delete f.savedAt; figs[h.id]=f; });
-  return JSON.stringify({figs, order:headings.map(h=>h.id), hidden:hiddenHeadings.map(h=>h.id), billing});
+  return JSON.stringify({figs, order:headings.map(h=>h.id), hidden:hiddenHeadings.map(h=>h.id), billing, hpd:hoursPerDay});
 }
 function recordState(){
   const sig=stateSignature();
@@ -2278,6 +3354,7 @@ function applyState(str){
   headings=vis.concat(rest.filter(h=>!h.excluded));
   hiddenHeadings=hid.concat(rest.filter(h=>h.excluded));
   billing=sanitiseBilling(s.billing); _billCache.sig='';
+  hoursPerDay=sanitiseHpd(s.hpd);
   undoEnabled=false; refresh(); undoEnabled=true;
   updateUndoIndicator();
 }
@@ -2448,8 +3525,12 @@ function billingFromList(list){
   const h=list.find(x=>x.fileBilling);
   return h ? sanitiseBilling(h.fileBilling) : {...BILLING_DEFAULT};
 }
+function hpdFromList(list){
+  const h=list.find(x=>x.fileHpd);
+  return h ? sanitiseHpd(h.fileHpd) : HPD_DEFAULT;
+}
 function figuresSig(){
-  const m={_billing:billing};
+  const m={_billing:billing, _hpd:hoursPerDay};
   allHeadings().forEach(h=>{ const p=forecastPayload(h); if(p) m[h.id]=p; });
   return JSON.stringify(Object.keys(m).sort().map(k=>[k,m[k]]));
 }
@@ -2549,11 +3630,11 @@ async function importProgramme(d, fileName, handle, stamp){
     const {pairs, removed}=matchHeadings(list, old);
     const fileBilling=billingFromList(list);
     const differ=[...pairs].filter(([nh,o])=>!figuresEqual(nh,o));
-    if(JSON.stringify(fileBilling)!==JSON.stringify(billing) && !differ.length) differ.push([null,null]);
+    if((JSON.stringify(fileBilling)!==JSON.stringify(billing) || hpdFromList(list)!==hoursPerDay) && !differ.length) differ.push([null,null]);
     if(differ.length){
       const fileHas=list.some(h=>forecastPayload(h));
       source = await showChoice('Which figures?',
-        `<p>${differ[0][0]?`${differ.length} heading${differ.length!==1?'s have':' has'} different fees or actual invoices`:'The billing period setting is different'} on screen from ${escHtml(fileName)}.</p>
+        `<p>${differ[0][0]?`${differ.length} heading${differ.length!==1?'s have':' has'} different fees or actual invoices`:'The settings (billing period or hours per day) are different'} on screen from ${escHtml(fileName)}.</p>
          <p style="margin-top:8px"><strong>Keep figures on screen</strong> takes the programme dates from the file and keeps what you see now. Save JSON then writes them into the file.</p>
          <p style="margin-top:8px"><strong>Use figures in file</strong> loads the file as it is.</p>
          ${fileHas?'':'<p class="muted" style="margin-top:8px">The file has no forecast figures in it yet.</p>'}`,
@@ -2561,7 +3642,7 @@ async function importProgramme(d, fileName, handle, stamp){
       if(!source){ workdayOverrides=prevOverrides; return; }
     }
     if(source==='memory') pairs.forEach((o,nh)=>applyFigures(nh, figuresOf(o)));
-    else billing=billingFromList(list);
+    else { billing=billingFromList(list); hoursPerDay=hpdFromList(list); }
     let moved=0; const added=[];
     list.forEach(nh=>{ const o=pairs.get(nh); if(!o) added.push(nh.name||'(unnamed)'); else if(JSON.stringify(o.segments)!==JSON.stringify(nh.segments)) moved++; });
     summary=`<p>${pairs.size} heading${pairs.size!==1?'s':''} matched${moved?`, ${moved} with new dates (budget and forecast re-spread; actual invoices stay where they are)`:', no date changes'}.</p>`;
@@ -2573,7 +3654,7 @@ async function importProgramme(d, fileName, handle, stamp){
     showNonWorkBands=!!d.showNonWorkBands;
     document.getElementById('nonwork-btn').classList.toggle('active',showNonWorkBands);
     durationMode = d.durationMode==='weeks' ? 'weeks' : 'days';
-    billing=billingFromList(list);
+    billing=billingFromList(list); hoursPerDay=hpdFromList(list);
     const withFig=list.filter(h=>h.fee||h.actuals.length).length;
     summary = withFig
       ? `<p>${list.length} heading${list.length!==1?'s':''} loaded, ${withFig} with fees or actual invoices saved in the file.</p>`
@@ -2593,12 +3674,12 @@ async function importProgramme(d, fileName, handle, stamp){
 }
 
 function figuresSigOf(doc){
-  const prev=workdayOverrides, prevB=billing;
+  const prev=workdayOverrides, prevB=billing, prevH=hoursPerDay;
   const {list}=headingsFromGantt(doc);
-  billing=billingFromList(list);
-  const m={_billing:billing};
+  billing=billingFromList(list); hoursPerDay=hpdFromList(list);
+  const m={_billing:billing, _hpd:hoursPerDay};
   list.forEach(h=>{ const p=forecastPayload(h); if(p) m[h.id]=p; });
-  workdayOverrides=prev; billing=prevB;
+  workdayOverrides=prev; billing=prevB; hoursPerDay=prevH;
   return JSON.stringify(Object.keys(m).sort().map(k=>[k,m[k]]));
 }
 
@@ -2641,7 +3722,7 @@ async function checkLinkedFile(force){
     // what it loaded, so its copy can be stale: keep the screen.
     const keepScreen = isDirty() || fileFigs===savedFiguresSig || progChanged;
     if(keepScreen) pairs.forEach((o,nh)=>applyFigures(nh, figuresOf(o)));
-    else billing=billingFromList(list);
+    else { billing=billingFromList(list); hoursPerDay=hpdFromList(list); }
     let moved=0; pairs.forEach((o,nh)=>{ if(JSON.stringify(o.segments)!==JSON.stringify(nh.segments)) moved++; });
     const added=list.length-pairs.size;
     const prevSaved=savedFiguresSig;
@@ -2758,7 +3839,11 @@ function buildDoc(base){
   (doc.tasks||[]).forEach(t=>{
     if(!t || t.type!=='heading' || !byId.has(t.id)) return;
     const p=forecastPayload(byId.get(t.id));
-    if(p){ p.savedAt=stamp; t.forecast=p; } else delete t.forecast;
+    if(p){ p.savedAt=stamp; t.forecast=p; }
+    // Figures cleared here: leave a dated empty marker rather than deleting
+    // the property, so a Gantt window still holding the old figures sees
+    // that the file is newer and does not write them back on Save JSON.
+    else if(t.forecast) t.forecast={savedAt:stamp};
   });
   return doc;
 }
@@ -2827,7 +3912,7 @@ async function exportCSV(){
   const fc=currentForecast||resolveBreakdown();
   const mode=fc.mode;
   const keys=new Set();
-  fc.rows.forEach(r=>{ [r.periods,r.inv,r.act].forEach(m=>m.forEach((p,k)=>{ if(p.cents||(p.act&&p.act.size)) keys.add(k); })); });
+  fc.rows.forEach(r=>{ [r.periods,r.inv,r.act,r.resPeriods].forEach(m=>m.forEach((p,k)=>{ if(p.cents||p.hours||(p.act&&p.act.size)) keys.add(k); })); });
   const sorted=[...keys].sort();
   const all=[];
   if(sorted.length){
@@ -2837,21 +3922,36 @@ async function exportCSV(){
   const field=v=>{ const s=String(v==null?'':v); return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; };
   const num=c=>(c/100).toFixed(2);
   const label=k=>mode==='billing'?`Invoice ${fmtDisplay(k)}`:`Wk ${weekNumberOf(k)??''} ${fmtDisplay(k)}`.trim();
-  const head=['Heading','Row','Start','End','Working days','Total fee','To date / invoiced','Remaining'].concat(all.map(label)).concat(['Actual invoices']);
+  const head=['Heading','Row','Start','End','Working days','Total fee','To date / invoiced','Remaining'].concat(all.map(label)).concat(['Actual invoices / hours']);
   const lines=[head.map(field).join(',')];
   const cells=(m)=>all.map(k=>{ const p=m.get(k); return p&&(p.cents||(p.act&&p.act.size))?num(p.cents):''; });
   fc.rows.forEach(r=>{
     const sp=headingSpan(r.h);
     const base=(row)=>[r.h.name, row, sp.start?fmtDisplay(sp.start):'', sp.end?fmtDisplay(sp.end):'', r.days, num(r.cents)];
     lines.push(base('Budget').concat([num(r.budgetToDate),num(r.budgetRemaining)]).concat(cells(r.periods)).map(field).join(','));
-    lines.push(base('Remaining invoiced').concat(['',num(r.remTotal)]).concat(all.map(k=>{ const p=r.inv.get(k); return p&&p.freeCents?num(p.freeCents):''; })).map(field).join(','));
-    lines.push(base('Actual invoiced').concat([num(r.actToDate),'']).concat(cells(r.act))
+    lines.push(base('Invoicing (remaining)').concat(['',num(r.remTotal)]).concat(all.map(k=>{ const p=r.inv.get(k); return p&&p.freeCents?num(p.freeCents):''; })).map(field).join(','));
+    lines.push(base('Invoicing (invoiced)').concat([num(r.actToDate),'']).concat(cells(r.act))
       .concat([(r.h.actuals||[]).map(a=>`${a.label?a.label+' ':''}${fmtDisplay(a.start)}-${fmtDisplay(a.end)} ${num(a.cents)}`).join('; ')]).map(field).join(','));
+    // Resourcing: cost per period (hours x rate), then each resource
+    const costCells=m=>all.map(k=>{ const p=m.get(k); return p&&(p.cents||p.hours)?num(Math.round(p.cents)):''; });
+    if(r.res.length){
+      lines.push(base('Resourcing').concat([num(r.resToDate),num(r.resRemaining)]).concat(costCells(r.resPeriods)).map(field).join(','));
+      r.res.forEach(rc=>{
+        const x=rc.res;
+        lines.push([r.h.name, `Resource: ${resLabel(x)} @ ${num(Math.round(x.rate*100))}/hr`, '', '', '', '', num(rc.toDate), num(rc.remaining)]
+          .concat(costCells(rc.periods))
+          .concat([x.actuals.map(a=>`${fmtDisplay(a.start)}-${fmtDisplay(a.end)} ${a.days!=null?fmtNum(a.days)+' d':fmtNum(a.hours)+' h'}`).join('; ')]).map(field).join(','));
+      });
+    }
   });
   const tot=(row,a,b,m)=>lines.push(['Total',row,'','','',num(fc.totalFee),a==null?'':num(a),b==null?'':num(b)].concat(all.map(k=>num(m.get(k)||0))).map(field).join(','));
   tot('Budget',fc.budgetToDate,fc.budgetRemaining,fc.totals);
-  tot('Remaining invoiced',null,fc.remTotal,fc.remTotals);
-  tot('Actual invoiced',fc.actToDate,null,fc.actTotals);
+  tot('Invoicing (remaining)',null,fc.remTotal,fc.remTotals);
+  tot('Invoicing (invoiced)',fc.actToDate,null,fc.actTotals);
+  if(fc.rows.some(r=>r.res.length)){
+    const rt=new Map(); fc.resTotals.forEach((c,k)=>rt.set(k,Math.round(c)));
+    tot('Resourcing',fc.resToDate,fc.resRemaining,rt);
+  }
   const blob=new Blob([lines.join('\r\n')],{type:'text/csv'});
   if(await saveBlob(blob, exportBaseName()+'-'+mode+'-'+fmt(new Date())+'.csv','CSV spreadsheet','text/csv','.csv'))
     flashStatus('✓ CSV saved ('+mode+')');
@@ -2870,6 +3970,7 @@ function openSettings(){
   document.getElementById('set-freq').value=billing.freq;
   document.getElementById('set-day').value=billing.last?'':billing.day;
   document.getElementById('set-last').checked=billing.last;
+  document.getElementById('set-hpd').value=hoursPerDay;
   document.getElementById('settings-modal').style.display='flex';
   onSettingsInput();
 }
@@ -2913,12 +4014,20 @@ function onSettingsInput(){
 function applySettings(){
   const b=readSettingsForm();
   if(!document.getElementById('set-last').checked && !(+document.getElementById('set-day').value)) return;
+  const hv=+document.getElementById('set-hpd').value;
+  if(!(hv>0 && hv<=24)){ document.getElementById('set-hpd').classList.add('invalid'); return; }
+  document.getElementById('set-hpd').classList.remove('invalid');
+  const hpd=sanitiseHpd(hv);
   closeSettings();
-  if(JSON.stringify(b)===JSON.stringify(billing)) return;
-  billing=b; _billCache.sig='';
-  if(breakdownPref!=='billing'){ breakdownPref='billing'; }
+  const billChanged=JSON.stringify(b)!==JSON.stringify(billing), hpdChanged=hpd!==hoursPerDay;
+  if(!billChanged && !hpdChanged) return;
+  if(billChanged){ billing=b; _billCache.sig=''; if(breakdownPref!=='billing') breakdownPref='billing'; }
+  hoursPerDay=hpd;
   refresh();
-  flashStatus(`Billing period: ${billingFreqName().toLowerCase()}, invoiced on ${billingDayText()}.`);
+  const msg=[];
+  if(billChanged) msg.push(`Billing period: ${billingFreqName().toLowerCase()}, invoiced on ${billingDayText()}.`);
+  if(hpdChanged) msg.push(`Hours per day: ${fmtNum(hoursPerDay)}. Time entered in days follows it.`);
+  flashStatus(msg.join(' '));
 }
 
 // Ctrl+Z belongs to the app unless a value is actually being typed. The old
@@ -2928,6 +4037,9 @@ function applySettings(){
 function appUndoAllowed(t){
   if(!t || !(t.tagName==='INPUT'||t.tagName==='TEXTAREA'||t.tagName==='SELECT')) return true;
   if(t.classList.contains('fee-input')) return t.value===(t.dataset.orig||'');
+  if(t.classList.contains('res-input')) return t.value===(t.dataset.orig||'');
+  const hp=document.getElementById('hrs-popup');
+  if(hp.contains(t)) return !hp.classList.contains('visible');
   const pop=document.getElementById('ovr-popup');
   if(pop.contains(t)) return !pop.classList.contains('visible');
   return false;
@@ -2947,7 +4059,7 @@ document.addEventListener('keydown',e=>{
     if(e.target && e.target.blur && e.target!==document.body) e.target.blur();
     isUndo ? undo() : redo();
   }
-  if(e.key==='Escape'){ closeColorPicker(); closeCtx(); closeOverridePopup(); closeSettings(); }
+  if(e.key==='Escape'){ closeColorPicker(); closeCtx(); closeOverridePopup(); closeHoursPopup(); closeSettings(); }
 });
 
 // ═══════════════════════════════════════════════════════
