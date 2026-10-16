@@ -1332,7 +1332,8 @@ function resourceSummary(rows, mode, today){
     if(!pp){ pp={key, res:rc.res, periods:new Map(), weeks:new Map(), total:0}; by.set(key,pp); }
     const wk = mode==='weekly' ? rc.periods : resourceCalc(rc.res,'weekly',today||todayStr()).periods;
     wk.forEach((p,k)=>{ if(p.hours) pp.weeks.set(k,(pp.weeks.get(k)||0)+p.hours); });
-    rc.periods.forEach((p,k)=>{
+    // The schedule is always week by week, whatever the view
+    wk.forEach((p,k)=>{
       if(!p.hours) return;
       let q=pp.periods.get(k); if(!q){ q={hours:0, by:[]}; pp.periods.set(k,q); }
       q.hours+=p.hours; q.by.push({h:r.h, hours:p.hours, actH:p.actH});
@@ -1463,7 +1464,8 @@ function resolveBreakdown(){
     r.inv.forEach(p=>fit(p.freeCents,LABEL_FONT_PX,LABEL_WEIGHT));
     r.resPeriods.forEach(p=>fit(Math.round(p.cents),TOTAL_FONT_PX,TOTAL_WEIGHT));
   });
-  weekly.people.forEach(pp=>pp.periods.forEach(q=>{ maxW=Math.max(maxW,textWidth(fmtLoad(q.hours),LOAD_FONT_PX,LOAD_WEIGHT)); }));
+  // (The person rows are always weekly and simply go blank when too narrow,
+  // so they do not decide the view.)
   [weekly.totals,weekly.remTotals,weekly.actTotals].forEach(m=>m.forEach(c=>fit(c,TOTAL_FONT_PX,TOTAL_WEIGHT)));
   weeklyMinZoom = maxW ? Math.ceil((maxW+LABEL_PAD)/7) : 0;
   const fits = (maxW+LABEL_PAD) <= 7*pxPerDay;
@@ -1877,12 +1879,14 @@ function renderGanttHeader(minD,maxD,totalPx,fc) {
     });
     wrap.appendChild(tr);
   });
-  // Resourcing summary: one row per person, their time across every heading
+  // Resourcing schedule: one row per person, their time across every heading,
+  // always week by week (figures that do not fit a week are left blank)
+  const weeks=fc.people.length ? periodsInRange(minD,maxD,'weekly',totalPx) : [];
   fc.people.forEach((pp,n)=>{
     const tr=document.createElement('div'); tr.className='gantt-totals-row res-sum-row'+(n===0?' first':'');
     tr.dataset.kind='p'; tr.dataset.key=pp.key;
     tr.style.width=(totalPx+200)+'px';
-    periods.forEach(p=>{
+    weeks.forEach(p=>{
       const q=pp.periods.get(p.key); if(!q || q.hours<=1e-9) return;
       const cell=document.createElement('div'); cell.className='total-cell load-cell';
       cell.dataset.key=p.key;
@@ -1890,7 +1894,7 @@ function renderGanttHeader(minD,maxD,totalPx,fc) {
       const t=fmtLoad(q.hours);
       cell.textContent = textWidth(t,LOAD_FONT_PX,LOAD_WEIGHT)+4<=p.x1-p.x0 ? t : '';
       if(overWeeksIn(pp,p).length) cell.classList.add('over');
-      attachTip(cell,()=>loadTip(pp,p,fc.mode));
+      attachTip(cell,()=>loadTip(pp,p,'weekly'));
       tr.appendChild(cell);
     });
     wrap.appendChild(tr);
