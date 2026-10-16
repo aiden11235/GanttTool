@@ -466,6 +466,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
       </div>
       <div id="left-totals-b" class="left-totals tall"></div>
       <div id="left-totals-i" class="left-totals tall"></div>
+      <div id="left-totals-c" class="left-totals tall" style="display:none"></div>
       <div id="left-totals-r"></div>
       <div id="name-col-resize" class="col-resize-grip" title="Drag to resize Heading column"></div>
     </div>
@@ -1707,11 +1708,14 @@ function renderLeftTotals(fc){
   strip('left-totals-i',
     bad?`<span class="lt-warn">⚠ ${bad} heading${bad!==1?'s':''} cannot balance to the fee</span>`:'',
     'Invoicing', splitCell(fc.actToDate,fc.remTotal,'Invoiced to date, all headings','Still to be invoiced, all headings'));
-  // Resourcing summary: one strip per person, matching the chart header rows
+  // Resourcing cost strip, then one strip per person, matching the chart rows
+  const hasRes=fc.rows.some(r=>r.res.length), cs=document.getElementById('left-totals-c');
+  cs.style.display=hasRes?'':'none';
+  if(hasRes) strip('left-totals-c','','Resourcing', splitCell(fc.resToDate,fc.resRemaining,'Resourcing cost to date, all headings: actual time, plus planned time before today where none is entered','Resourcing cost remaining, all headings: planned time from today on'));
   const host=document.getElementById('left-totals-r');
   host.innerHTML=fc.people.map((pp,n)=>`<div class="left-totals res-sum${n===0?' first':''}">${blank}
       <div class="lt-cell"><span class="res-sum-name" title="${escHtml(resLabel(pp.res))}">${escHtml(resLabel(pp.res))}</span>${pp.over.size?`<span class="over-badge" title="Weeks where this person is assigned more time than the week's working days">⚠ ${pp.over.size} week${pp.over.size!==1?'s':''} over</span>`:''}</div>
-      <div class="lt-cell">${n===0?'<span class="lt-title">Resourcing</span>':''}</div>
+      <div class="lt-cell"></div>
       <div class="lt-cell lt-total" title="Total time across all headings and periods">${fmtLoad(pp.total)}</div>
       <div class="lt-cell"></div></div>`).join('');
 }
@@ -1842,7 +1846,10 @@ function renderGanttHeader(minD,maxD,totalPx,fc) {
   // Two totals rows, matching the rows below: Budget, then Invoicing with the
   // remaining figure on top and the actual invoices beneath it.
   const periods=periodsInRange(minD,maxD,fc.mode,totalPx);
-  [['b',fc.totals],['i',fc.remTotals]].forEach(([kind,map])=>{
+  // Third cost row, only when there is resourcing: cost per period, all resources
+  const hasRes=fc.rows.some(r=>r.res.length);
+  const resMap=new Map(); fc.resTotals.forEach((c,k)=>resMap.set(k,Math.round(c)));
+  [['b',fc.totals],['i',fc.remTotals]].concat(hasRes?[['c',resMap]]:[]).forEach(([kind,map])=>{
     const tr=document.createElement('div'); tr.className='gantt-totals-row tall';
     tr.dataset.kind=kind;
     tr.style.width=(totalPx+200)+'px';
@@ -1852,7 +1859,7 @@ function renderGanttHeader(minD,maxD,totalPx,fc) {
       cell.dataset.key=p.key;
       cell.style.left=p.x0+'px'; cell.style.width=(p.x1-p.x0)+'px';
       const show=c=>fc.mode==='weekly' ? money0(c) : fitText(c,p.x1-p.x0,TOTAL_FONT_PX,TOTAL_WEIGHT);
-      if(kind==='b'){
+      if(kind==='b' || kind==='c'){
         if(!cents) cell.classList.add('is-zero');
         else cell.textContent = show(cents);
         attachTip(cell,()=>totalTip(fc,p,cents,kind));
@@ -1901,22 +1908,23 @@ function loadTip(pp,p,mode){
   return html+`</div><div style="opacity:.6;font-size:10px">All headings. Actual time where entered, otherwise the plan.</div>`;
 }
 
-function rowMap(r,kind){ return kind==='b'?r.periods:kind==='i'?r.inv:r.act; }
+function rowMap(r,kind){ return kind==='b'?r.periods:kind==='i'?r.inv:kind==='c'?r.resPeriods:r.act; }
 
 function totalTip(fc,p,cents,kind){
-  const ttl={b:'Budget',i:'Remaining to invoice',a:'Actual invoices'}[kind];
+  const ttl={b:'Budget',i:'Remaining to invoice',a:'Actual invoices',c:'Resourcing cost'}[kind];
   let html=`<strong>${ttl}, ${escHtml(periodName(p.key,fc.mode,true))}</strong>`
     +`<br>${fmtDisplay(p.start)} to ${fmtDisplay(p.end)}`
     +`<br>${workdaysInRange(parseDate(p.start),parseDate(p.end))} working days`;
   if(!cents) return html+'<br><span style="opacity:.7">Nothing in this period</span>';
   html+=`<div style="margin-top:4px;border-top:1px solid #334155;padding-top:4px">`;
   fc.rows.forEach(r=>{
-    const pp=rowMap(r,kind).get(p.key); const v=pp?(kind==='i'?pp.freeCents:pp.cents):0; if(!v) return;
+    const pp=rowMap(r,kind).get(p.key); const v=pp?Math.round(kind==='i'?pp.freeCents:pp.cents):0; if(!v) return;
     html+=`<div class="tt-row"><span><span class="tt-dot" style="background:${r.h.color}"></span>${escHtml(r.h.name)}</span><span>${money2(v)}</span></div>`;
   });
   html+=`<div class="tt-row" style="font-weight:700;margin-top:2px"><span>Total</span><span>${money2(cents)}</span></div></div>`;
   if(kind==='i') html+=`<div style="opacity:.6;font-size:10px">Still to be invoiced in this period, not counting actual invoices</div>`;
   if(kind==='a') html+=`<div style="opacity:.6;font-size:10px">Actual invoices dated in this period</div>`;
+  if(kind==='c') html+=`<div style="opacity:.6;font-size:10px">Hours x rate, every resource (including any left out of the schedule). Actual time where entered, otherwise the plan.</div>`;
   return html;
 }
 
