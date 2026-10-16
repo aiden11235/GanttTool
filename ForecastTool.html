@@ -194,6 +194,8 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
 .load-cell{font-size:9px;font-weight:600;border-right:1px solid var(--border)}
 .res-sum-name{font-size:11px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .res-sum .lt-total{font-size:10px}
+.load-cell.over{background:#fee2e2;color:#dc2626;font-weight:700}
+.over-badge{margin-left:8px;font-size:10px;font-weight:600;color:#dc2626;white-space:nowrap}
 
 #gantt-body{flex:1;overflow:auto;position:relative}
 #gantt-canvas-wrap{position:relative}
@@ -251,6 +253,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
 .res-input::placeholder{color:var(--text-faint);font-style:italic}
 .res-who{flex-direction:column;align-items:stretch;justify-content:center;gap:0}
 .res-name{margin-left:12px;width:calc(100% - 12px);padding:1px 5px;line-height:17px}
+.res-row.excluded .res-name,.res-row.excluded .res-pos{font-style:italic;color:var(--text-faint)}
 .res-pos{margin-left:12px;width:calc(100% - 12px);padding:0 5px;line-height:15px;font-size:11px;color:var(--text-muted)}
 .res-rate{font-family:var(--font-mono);font-size:11px;text-align:right}
 .gantt-row.res-prow{cursor:pointer;background:repeating-linear-gradient(90deg,transparent 0 3px,rgba(0,0,0,.012) 3px 4px)}
@@ -367,6 +370,10 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
 .modal-btn.primary{background:#3b82f6;border-color:#3b82f6;color:#fff;font-weight:600}
 #msg-body{font-size:12px;color:#4a4842;line-height:1.55;margin-bottom:16px;max-height:50vh;overflow:auto}
 #msg-body ul{padding-left:18px;margin:6px 0}
+#dt-text{font-family:var(--font);font-size:13px;line-height:1.5;color:#1a1a18;background:#fff;border:1px solid #e0ddd8;border-radius:4px;padding:10px 12px;max-height:55vh;overflow:auto;user-select:text;white-space:normal}
+#dt-text:focus{outline:2px solid var(--accent-light)}
+#dt-text p{margin:0}
+#dt-text .dt-gap{height:1.5em}
 #msg-body .muted{color:#6b6860}
 
 ::-webkit-scrollbar{width:6px;height:6px}
@@ -392,6 +399,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
   body.printing #hrs-popup,
   body.printing .res-hover,
   body.printing #settings-modal,
+  body.printing #dt-modal,
   body.printing .modal-bg,
   body.printing #empty-state,
   body.printing .col-resize-grip{display:none!important}
@@ -431,6 +439,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
   <button class="tb-btn tb-btn-ghost" onclick="reloadJSON()" title="Read the programme JSON again now, to pick up changes just saved in the Gantt tool. Your fees and invoices on screen are kept.">↻ Reload JSON</button>
   <button id="save-btn" class="tb-btn tb-btn-ghost" onclick="exportJSON()" title="Save the fees and actual invoices back into the programme JSON, the same file the Gantt tool uses">Save JSON</button>
   <button class="tb-btn tb-btn-ghost" onclick="exportCSV()" style="border-color:#10b981;color:#10b981" title="Spreadsheet of the forecast, one column per week or month as shown on screen">Export CSV</button>
+  <button class="tb-btn tb-btn-ghost" onclick="openScheduleExport()" style="border-color:#a78bfa;color:#a78bfa" title="Written summary of future resourcing, days per week per person, ready to copy into an email">Export DT</button>
   <button class="tb-btn tb-btn-ghost" onclick="openPDFModal()" style="border-color:#f59e0b;color:#f59e0b">⬇ PDF</button>
   <button class="tb-btn tb-btn-ghost" onclick="openImageModal()" style="border-color:#0ea5e9;color:#0ea5e9">🖼 Image</button>
   <div style="flex:1"></div>
@@ -546,6 +555,20 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
     <button class="modal-btn" id="hp-remove" onclick="removeHours()" style="margin-right:auto;color:var(--bar-crit)">Remove</button>
     <button class="modal-btn" onclick="closeHoursPopup()">Cancel</button>
     <button class="modal-btn primary" onclick="commitHours()">Apply</button>
+  </div>
+</div>
+
+<!-- Export DT: written resourcing summary -->
+<div id="dt-modal" class="modal-bg">
+  <div class="modal-card" style="width:460px">
+    <h2 style="margin-bottom:4px">Resourcing schedule</h2>
+    <div id="dt-sub" style="font-size:11px;color:#6b6860;margin-bottom:10px;line-height:1.45"></div>
+    <div id="dt-text" tabindex="0"></div>
+    <div id="dt-status" style="font-size:11px;color:#6b6860;min-height:16px;margin:8px 0"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="modal-btn" onclick="closeScheduleExport()">Close</button>
+      <button class="modal-btn primary" id="dt-copy" onclick="copyScheduleText()">Copy</button>
+    </div>
   </div>
 </div>
 
@@ -970,6 +993,7 @@ function sanitiseResources(list){
     id: typeof r.id==='string'&&r.id ? r.id : newResId(),
     name: String(r.name==null?'':r.name).slice(0,80),
     position: String(r.position==null?'':r.position).replace(/\s+/g,' ').trim().slice(0,60),
+    ...(r.schedule===false?{schedule:false}:{}),
     rate: Math.max(0, Math.round((+r.rate||0)*100)/100),
     bars: (Array.isArray(r.bars)?r.bars:[]).filter(b=>b&&isoDate(b.start)&&isoDate(b.end)&&b.end>=b.start)
             .map(b=>isFinite(+b.dpw)&&b.dpw!=null ? {start:b.start, end:b.end, dpw:r2(b.dpw)} : {start:b.start, end:b.end, hpw:r2(b.hpw)})
@@ -981,7 +1005,7 @@ function sanitiseResources(list){
 }
 // Copies in a fixed key order, so saved and reloaded figures compare equal
 function copyResources(list){
-  return (list||[]).map(r=>({id:r.id, name:r.name, ...(r.position?{position:r.position}:{}), rate:r.rate,
+  return (list||[]).map(r=>({id:r.id, name:r.name, ...(r.position?{position:r.position}:{}), ...(r.schedule===false?{schedule:false}:{}), rate:r.rate,
     bars:r.bars.map(b=>b.dpw!=null?{start:b.start,end:b.end,dpw:b.dpw}:{start:b.start,end:b.end,hpw:b.hpw}),
     actuals:r.actuals.map(a=>{ const o={start:a.start,end:a.end}; if(a.days!=null) o.days=a.days; else o.hours=a.hours; o.mode=a.mode; return o; })}));
 }
@@ -1286,12 +1310,27 @@ function personKey(res){
   const p=String(res.position||'').trim().toLowerCase().replace(/\s+/g,' ');
   return n ? 'n:'+n : p ? 'p:'+p : '';
 }
-function resourceSummary(rows){
-  const by=new Map();
+// A week is over-allocated when a person's hours in it, across all headings,
+// are more than its working days x hours per day (public holidays count).
+// People taken out of the schedule (a resource's "Exclude from schedule").
+// It applies to the whole person: any of their rows excluded excludes them
+// all, so a new row for the same person follows. Costs are not affected.
+function excludedPeople(){
+  const out=new Set();
+  headings.concat(typeof hiddenHeadings!=='undefined'?hiddenHeadings:[]).forEach(h=>(h.resources||[]).forEach(r=>{
+    if(r.schedule===false){ const k=personKey(r); if(k) out.add(k); }
+  }));
+  return out;
+}
+function inSchedule(res){ const k=personKey(res); return !k || !excludedPeople().has(k); }
+function resourceSummary(rows, mode, today){
+  const by=new Map(), ex=excludedPeople();
   rows.forEach(r=>r.res.forEach(rc=>{
-    const key=personKey(rc.res); if(!key) return;
+    const key=personKey(rc.res); if(!key || ex.has(key)) return;
     let pp=by.get(key);
-    if(!pp){ pp={key, res:rc.res, periods:new Map(), total:0}; by.set(key,pp); }
+    if(!pp){ pp={key, res:rc.res, periods:new Map(), weeks:new Map(), total:0}; by.set(key,pp); }
+    const wk = mode==='weekly' ? rc.periods : resourceCalc(rc.res,'weekly',today||todayStr()).periods;
+    wk.forEach((p,k)=>{ if(p.hours) pp.weeks.set(k,(pp.weeks.get(k)||0)+p.hours); });
     rc.periods.forEach((p,k)=>{
       if(!p.hours) return;
       let q=pp.periods.get(k); if(!q){ q={hours:0, by:[]}; pp.periods.set(k,q); }
@@ -1299,7 +1338,19 @@ function resourceSummary(rows){
       pp.total+=p.hours;
     });
   }));
-  return [...by.values()].filter(pp=>pp.total>0);
+  const out=[...by.values()].filter(pp=>pp.total>0);
+  out.forEach(pp=>{
+    pp.over=new Map();   // week key -> {hours, cap, days}
+    pp.weeks.forEach((h,k)=>{
+      const days=workdaysInRange(parseDate(k),addDay(k,6)), cap=days*hoursPerDay;
+      if(h>cap+1e-6) pp.over.set(k,{hours:h, cap, days});
+    });
+  });
+  return out;
+}
+// Over-allocated weeks that fall (even partly) in a period of the view
+function overWeeksIn(pp, b){
+  return [...pp.over].filter(([k])=>k<=b.end && fmt(addDay(k,6))>=b.start);
 }
 // Time load: under a day in hours ("6 h"), a day or more in days to 1 dp ("3.0 d")
 function fmtLoad(h){
@@ -1361,7 +1412,7 @@ function buildForecast(mode){
             remTotal:a.C-a.actualSum};
   });
   const sum=(f)=>rows.reduce((s,r)=>s+f(r),0);
-  return {mode, rows, people:resourceSummary(rows), totals:budgetTotals, invTotals, actTotals, remTotals, resTotals, totalFee, unallocated,
+  return {mode, rows, people:resourceSummary(rows,mode,today), totals:budgetTotals, invTotals, actTotals, remTotals, resTotals, totalFee, unallocated,
     resToDate:sum(r=>r.resToDate), resRemaining:sum(r=>r.resRemaining),
     remTotal:sum(r=>r.remTotal),
     budgetToDate:sum(r=>r.budgetToDate), budgetRemaining:sum(r=>r.budgetRemaining),
@@ -1659,7 +1710,7 @@ function renderLeftTotals(fc){
   // Resourcing summary: one strip per person, matching the chart header rows
   const host=document.getElementById('left-totals-r');
   host.innerHTML=fc.people.map((pp,n)=>`<div class="left-totals res-sum${n===0?' first':''}">${blank}
-      <div class="lt-cell"><span class="res-sum-name" title="${escHtml(resLabel(pp.res))}">${escHtml(resLabel(pp.res))}</span></div>
+      <div class="lt-cell"><span class="res-sum-name" title="${escHtml(resLabel(pp.res))}">${escHtml(resLabel(pp.res))}</span>${pp.over.size?`<span class="over-badge" title="Weeks where this person is assigned more time than the week's working days">⚠ ${pp.over.size} week${pp.over.size!==1?'s':''} over</span>`:''}</div>
       <div class="lt-cell">${n===0?'<span class="lt-title">Resourcing</span>':''}</div>
       <div class="lt-cell lt-total" title="Total time across all headings and periods">${fmtLoad(pp.total)}</div>
       <div class="lt-cell"></div></div>`).join('');
@@ -1831,6 +1882,7 @@ function renderGanttHeader(minD,maxD,totalPx,fc) {
       cell.style.left=p.x0+'px'; cell.style.width=(p.x1-p.x0)+'px';
       const t=fmtLoad(q.hours);
       cell.textContent = textWidth(t,LOAD_FONT_PX,LOAD_WEIGHT)+4<=p.x1-p.x0 ? t : '';
+      if(overWeeksIn(pp,p).length) cell.classList.add('over');
       attachTip(cell,()=>loadTip(pp,p,fc.mode));
       tr.appendChild(cell);
     });
@@ -1843,6 +1895,9 @@ function loadTip(pp,p,mode){
     +`<br><strong>${fmtLoad(q.hours)}</strong> <span style="opacity:.75">(${fmtHours(q.hours)} at ${fmtNum(hoursPerDay)} h/day)</span>`;
   html+=`<div style="margin-top:4px;border-top:1px solid #334155;padding-top:4px">`;
   q.by.forEach(x=>{ html+=`<div class="tt-row"><span><span class="tt-dot" style="background:${x.h.color}"></span>${escHtml(x.h.name)}${x.actH?' <span style="opacity:.6">(actual)</span>':''}</span><span>${fmtLoad(x.hours)}</span></div>`; });
+  const ov=overWeeksIn(pp,p);
+  if(ov.length) html+=`</div><div style="margin-top:4px;border-top:1px solid #334155;padding-top:4px;color:#fca5a5">`
+    + ov.map(([k,o])=>`⚠ Over-allocated, ${escHtml(periodName(k,'weekly',false))}: ${fmtLoad(o.hours)} in a week with ${o.days} working day${o.days!==1?'s':''}`).join('<br>');
   return html+`</div><div style="opacity:.6;font-size:10px">All headings. Actual time where entered, otherwise the plan.</div>`;
 }
 
@@ -3152,7 +3207,7 @@ async function copyResourcing(from, to){
   if(!choice) return;
   const shift=choice==='shift' ? weeks*7 : 0;
   const mv=d=>shift?fmt(addDay(d,shift)):d;
-  dst.resources=(dst.resources||[]).concat(src.resources.map(r=>({id:newResId(), name:r.name, position:r.position||'', rate:r.rate,
+  dst.resources=(dst.resources||[]).concat(src.resources.map(r=>({id:newResId(), name:r.name, position:r.position||'', ...(r.schedule===false?{schedule:false}:{}), rate:r.rate,
     bars:r.bars.map(x=>({...x,start:mv(x.start),end:mv(x.end)})), actuals:[]})));
   refresh();
   flashStatus(`Resourcing copied to ${dst.name}${shift?`, moved ${Math.abs(weeks)} week${Math.abs(weeks)!==1?'s':''}`:''}. Undo takes it back.`);
@@ -3170,6 +3225,7 @@ function openResRowMenu(e, i, k, row){
   items.push(`<div class="ctx-item" onclick="resCtxActual()">✎ ${here.some(a=>a.start===b.start&&a.end===b.end)?'Change':'Enter'} actual hours for this ${unitName(mode)}…</div>`);
   if(here.length) items.push(`<div class="ctx-item" onclick="resCtxClearPeriod()">↺ Remove actual hours in this ${unitName(mode)}</div>`);
   items.push('<div class="ctx-sep"></div>');
+  items.push(`<div class="ctx-item" onclick="closeCtx();setInSchedule(${i},${k},${!inSchedule(res)})">${inSchedule(res)?'⊘ Exclude from schedule':'✓ Include in schedule'}</div>`);
   if(res.actuals.length) items.push(`<div class="ctx-item danger" onclick="resCtxClearAll()">✕ Remove all actual hours for this resource</div>`);
   items.push(`<div class="ctx-item danger" onclick="closeCtx();deleteResource(${i},${k})">✕ Delete this resource</div>`);
   showMenu(e,items);
@@ -3229,7 +3285,11 @@ function openResLeftMenu(e, i, k){
   e.preventDefault(); hideTooltip(); closeAllPopups();
   const n=headings[i].resources.length;
   document.getElementById('ctx-title').textContent=resLabel(headings[i].resources[k],'Resource');
-  const items=[`<div class="ctx-item" onclick="closeCtx();addResource(${i},${k+1})">＋ Insert resource below</div>`];
+  const inSch=inSchedule(headings[i].resources[k]);
+  const items=[`<div class="ctx-item" onclick="closeCtx();setInSchedule(${i},${k},${!inSch})">${inSch?'⊘ Exclude from schedule':'✓ Include in schedule'}</div>`,
+    `<div class="ctx-item info">${inSch?'Excluding takes this person out of the resourcing rows at the top and the Export DT summary, on every heading. Their cost still counts.':'This person is left out of the resourcing rows at the top and the Export DT summary. Their cost still counts.'}</div>`,
+    '<div class="ctx-sep"></div>',
+    `<div class="ctx-item" onclick="closeCtx();addResource(${i},${k+1})">＋ Insert resource below</div>`];
   if(k>0) items.push(`<div class="ctx-item" onclick="closeCtx();moveResource(${i},${k},-1)">↑ Move up</div>`);
   if(k<n-1) items.push(`<div class="ctx-item" onclick="closeCtx();moveResource(${i},${k},1)">↓ Move down</div>`);
   items.push('<div class="ctx-sep"></div>',`<div class="ctx-item danger" onclick="closeCtx();deleteResource(${i},${k})">✕ Delete this resource</div>`);
@@ -3240,7 +3300,8 @@ function openResLeftMenu(e, i, k){
 function leftResourceRow(h, i, r, spec){
   const k=spec.k, res=h.resources[k], rc=r.res[k];
   const sr=document.createElement('div');
-  sr.className='task-row res-row';
+  const inSch=inSchedule(res);
+  sr.className='task-row res-row'+(inSch?'':' excluded');
   sr.dataset.idx=i; sr.dataset.rk=spec.rk; sr.dataset.k=k;
   sr.style.height=spec.ht+'px';
   const fee=splitCell(rc.toDate, rc.remaining,
@@ -3249,7 +3310,8 @@ function leftResourceRow(h, i, r, spec){
   sr.innerHTML=`
     <div class="heading-stripe" style="background:${h.color}"></div>
     <div class="task-cell" style="padding:0"><button class="heading-del-btn" tabindex="-1" onclick="deleteResource(${i},${k})" title="Delete this resource" style="color:${h.color}">×</button></div>
-    <div class="task-cell row-handle" title="Drag to reorder" onmousedown="startResDrag(event,${i},${k})">⠿</div><div class="task-cell"></div>
+    <div class="task-cell row-handle" title="Drag to reorder" onmousedown="startResDrag(event,${i},${k})">⠿</div>
+    <div class="task-cell"></div>
     <div class="task-cell res-who" style="overflow:hidden"><input class="res-input res-name" type="text" autocomplete="off" spellcheck="false" maxlength="80"
       data-i="${i}" data-k="${k}" data-f="name" value="${escHtml(res.name)}" placeholder="Resource name" title="Resource name"><input class="res-input res-pos" type="text" autocomplete="off" spellcheck="false" maxlength="60"
       data-i="${i}" data-k="${k}" data-f="position" value="${escHtml(res.position||'')}" placeholder="Position" title="Position, e.g. Director, Associate, Graduate"></div>
@@ -3352,6 +3414,16 @@ function resBlur(e,el){
   }
   refresh();
   if(next){ const t=document.querySelector(next); if(t) t.focus(); }
+}
+// Include or exclude a person from the schedule, on every heading at once
+function setInSchedule(i, k, on){
+  const res=headings[i] && headings[i].resources[k]; if(!res) return;
+  const key=personKey(res);
+  allHeadings().forEach(h=>(h.resources||[]).forEach(r=>{
+    if(r===res || (key && personKey(r)===key)){ if(on) delete r.schedule; else r.schedule=false; }
+  }));
+  refresh();
+  flashStatus(`${resLabel(res)} ${on?'included in':'excluded from'} the schedule${key?' on every heading':''}. Costs are unchanged.`);
 }
 function addResource(i, at){
   const h=headings[i]; if(!h) return;
@@ -4180,6 +4252,90 @@ async function exportCSV(){
 
 
 // ═══════════════════════════════════════════════════════
+//  EXPORT DT: written summary of future resourcing
+//  From the current week on, each person's time per week across every
+//  heading (people excluded from the schedule are left out). Weeks with the
+//  same figures run together as one block; a new block starts whenever any
+//  figure changes. Rates are per working week: a week shortened by a public
+//  holiday shows the same rate as a full one, and weeks with no working days
+//  (a shutdown) are skipped without breaking a block. Dates follow the
+//  "From 26 Oct - 30 Nov" style: each block ends on the Monday the next
+//  period starts. Someone who drops out shows 0.0 days/wk in the next block.
+// ═══════════════════════════════════════════════════════
+function fmtShort(d){ const x=parseDate(d); return `${x.getDate()} ${x.toLocaleString('en-AU',{month:'short'})}`; }
+function fmtRate(dpw){
+  if(dpw<=1e-9) return '0.0 days/wk';
+  if(dpw < 1-1e-9){ const h=Math.round(dpw*hoursPerDay*10)/10; return `${h.toFixed(1)} hrs/wk`; }
+  return `${(Math.round(dpw*10)/10).toFixed(1)} days/wk`;
+}
+function personName(res){ return (res.name||'').trim() || (res.position||'').trim() || '(unnamed)'; }
+function scheduleBlocks(){
+  const fc=buildForecast('weekly'), people=fc.people;   // already without excluded people
+  const start=fmt(mondayOf(todayStr()));
+  let last=null;
+  people.forEach(pp=>pp.weeks.forEach((h,k)=>{ if(h>1e-9 && k>=start && (!last||k>last)) last=k; }));
+  const blocks=[]; let cur=null;
+  if(!last) return {blocks, start};
+  for(let w=start; w<=last; w=fmt(addDay(w,7))){
+    const wd=workdaysInRange(parseDate(w),addDay(w,6));
+    if(!wd) continue;                                   // shutdown week: no change
+    const rates=new Map();
+    people.forEach(pp=>{ const h=pp.weeks.get(w)||0; if(h>1e-9) rates.set(pp.key, h/wd*5/hoursPerDay); });
+    const sig=JSON.stringify(people.map(pp=>rates.has(pp.key)?fmtRate(rates.get(pp.key)):''));
+    if(!rates.size){ cur=null; continue; }               // nobody on: gap between blocks
+    if(cur && cur.sig===sig && cur.nextMon===w){ cur.end=w; cur.nextMon=fmt(addDay(w,7)); continue; }
+    if(cur && cur.sig===sig){ cur.end=w; cur.nextMon=fmt(addDay(w,7)); continue; }   // only shutdown weeks between
+    cur={start:w, end:w, nextMon:fmt(addDay(w,7)), sig, rates};
+    blocks.push(cur);
+  }
+  // Lines: everyone on in the block, plus anyone on in the block just before
+  // it (shown at 0.0 days/wk so the drop is visible)
+  blocks.forEach((b,n)=>{
+    const prev=blocks[n-1], adj=prev && prev.nextMon>=b.start;
+    b.lines=people.filter(pp=>b.rates.has(pp.key) || (adj && prev.rates.has(pp.key)))
+      .map(pp=>({name:personName(pp.res), text:fmtRate(b.rates.get(pp.key)||0)}));
+    b.to=b.nextMon;
+  });
+  return {blocks, start};
+}
+function scheduleText(){
+  const {blocks}=scheduleBlocks();
+  const head=b=>`From ${fmtShort(b.start)} - ${fmtShort(b.to)}:`;
+  const plain=blocks.map(b=>[head(b)].concat(b.lines.map(l=>`${l.name}: ${l.text}`)).join('\n')).join('\n\n');
+  const html=blocks.map(b=>`<p><u>${escHtml(head(b))}</u></p>`+b.lines.map(l=>`<p>${escHtml(l.name)}: ${escHtml(l.text)}</p>`).join('')).join('<p class="dt-gap"><br></p>');
+  return {plain, html, n:blocks.length};
+}
+function openScheduleExport(){
+  const t=scheduleText(), ex=excludedPeople().size;
+  document.getElementById('dt-sub').textContent = t.n
+    ? `Future resourcing from the week of ${fmtShort(fmt(mondayOf(todayStr())))}, all headings combined. A new block starts when anyone's time changes. Under a day a week is shown in hours.`
+      + (ex?` ${ex} ${ex===1?'person is':'people are'} excluded from the schedule.`:'')
+    : 'No resourcing from this week on.';
+  document.getElementById('dt-text').innerHTML = t.n ? t.html : '<p style="color:#9e9c97">Nothing to show. Add resources and bars of time under the headings.</p>';
+  document.getElementById('dt-status').textContent='';
+  document.getElementById('dt-modal').style.display='flex';
+  document.getElementById('dt-copy').focus();
+}
+function closeScheduleExport(){ document.getElementById('dt-modal').style.display='none'; }
+// Copies with the underlining (for email) and as plain text (for anything else)
+async function copyScheduleText(){
+  const t=scheduleText(), st=document.getElementById('dt-status');
+  const html=`<div style="font-family:Arial,sans-serif;font-size:11pt">${t.html.replace(/<p class="dt-gap"><br><\/p>/g,'<p><br></p>').replace(/<p>/g,'<p style="margin:0">')}</div>`;
+  try{
+    if(window.ClipboardItem && navigator.clipboard && navigator.clipboard.write){
+      await navigator.clipboard.write([new ClipboardItem({'text/html':new Blob([html],{type:'text/html'}),'text/plain':new Blob([t.plain],{type:'text/plain'})})]);
+    } else throw new Error('no clipboard');
+    st.textContent='✓ Copied. Paste into an email or document.';
+  }catch(e){
+    // Fallback: select the text and copy it as shown
+    const r=document.createRange(); r.selectNodeContents(document.getElementById('dt-text'));
+    const sel=window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+    let ok=false; try{ ok=document.execCommand('copy'); }catch(x){}
+    st.textContent = ok ? '✓ Copied.' : 'Select the text above and press Ctrl+C to copy it.';
+  }
+}
+
+// ═══════════════════════════════════════════════════════
 //  GLOBAL SETTINGS: billing period
 // ═══════════════════════════════════════════════════════
 function readSettingsForm(){
@@ -4280,7 +4436,7 @@ document.addEventListener('keydown',e=>{
     if(e.target && e.target.blur && e.target!==document.body) e.target.blur();
     isUndo ? undo() : redo();
   }
-  if(e.key==='Escape'){ closeColorPicker(); closeCtx(); closeOverridePopup(); closeHoursPopup(); closeSettings(); }
+  if(e.key==='Escape'){ closeColorPicker(); closeCtx(); closeOverridePopup(); closeHoursPopup(); closeSettings(); closeScheduleExport(); }
 });
 
 // ═══════════════════════════════════════════════════════
