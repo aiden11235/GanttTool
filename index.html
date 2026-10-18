@@ -26,7 +26,19 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
 
 /* TOP BAR */
 #topbar{background:var(--header-bg);color:var(--header-text);padding:0 16px;height:48px;display:flex;align-items:center;gap:12px;flex-shrink:0;border-bottom:1px solid #334155}
-#topbar h1{font-size:15px;font-weight:600;letter-spacing:-.01em;color:#f1f5f9;margin-right:4px}
+#topbar h1{font-size:15px;font-weight:600;letter-spacing:-.01em;color:#f1f5f9;margin-right:4px;flex-shrink:0}
+#topbar .tb-btn{flex-shrink:0}
+.title-input{background:transparent;border:1px solid transparent;color:#f1f5f9;font-family:var(--font);font-size:14px;font-weight:600;padding:4px 7px;border-radius:4px;width:240px;min-width:120px}
+.title-input:hover{border-color:#334155}
+.title-input:focus{outline:none;border-color:#3b82f6;background:#0f172a}
+.title-input::placeholder{color:#64748b;font-weight:400;font-style:italic}
+.gt-set-card{background:#1e293b;color:#e2e8f0;border-radius:10px;padding:20px 22px;width:560px;max-width:calc(100vw - 32px);box-shadow:0 20px 60px rgba(0,0,0,.4);font-family:var(--font)}
+.gt-set-card h2{font-size:15px;margin-bottom:14px;color:#f1f5f9}
+.gt-set-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid #334155;flex-wrap:wrap}
+.gt-set-label{width:110px;font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.04em;flex-shrink:0}
+.gt-set-card #legend{flex-wrap:wrap;padding:0;gap:14px}
+.gt-set-card .leg{font-size:11px;color:#cbd5e1}
+.gt-set-hint{font-size:11px;color:#94a3b8;line-height:1.45;margin-top:8px}
 .tb-sep{width:1px;height:24px;background:#334155;flex-shrink:0}
 .tb-label{font-size:11px;color:#94a3b8;margin-right:3px;white-space:nowrap}
 .tb-input{background:#0f172a;border:1px solid #334155;color:#f1f5f9;padding:4px 8px;border-radius:4px;font-size:12px;font-family:var(--font)}
@@ -335,6 +347,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
   body.printing #color-popup,
   body.printing #ctx-menu,
   body.printing #pdf-modal,
+  body.printing #gt-settings,
   body.printing #image-modal,
   body.printing #drag-ghost,
   body.printing .col-resize-grip{display:none!important}
@@ -355,9 +368,8 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
 
 <div id="topbar">
   <h1>Gantt</h1>
-  <div class="tb-sep"></div>
-  <span class="tb-label">Project start</span>
-  <input type="text" id="project-start-display" class="tb-input" readonly placeholder="Pick date…" style="width:100px;cursor:pointer" onclick="openCalForProjectStart()">
+  <input id="project-title" class="title-input" type="text" placeholder="Project title" autocomplete="off" spellcheck="false" maxlength="120"
+    title="Project title. Saved in the JSON, so the Forecast tool shows it too." onchange="setProjectTitle(this.value)" onkeydown="if(event.key==='Enter')this.blur();if(event.key==='Escape'){this.value=projectTitle;this.blur();}">
   <div class="tb-sep"></div>
   <span class="tb-label">Zoom</span>
   <button class="tb-btn tb-btn-ghost" onclick="adjustZoom(-1)" style="padding:4px 8px">−</button>
@@ -381,14 +393,27 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
   <button class="tb-btn tb-btn-ghost" onclick="openPDFModal()" style="border-color:#f59e0b;color:#f59e0b">⬇ PDF</button>
   <button class="tb-btn tb-btn-ghost" onclick="openImageModal()" style="border-color:#0ea5e9;color:#0ea5e9">🖼 Image</button>
   <div style="flex:1"></div>
-  <button id="nonwork-btn" class="tb-btn tb-btn-ghost" onclick="toggleNonWorkBands()" title="Show the working day calendar: shades weekends, public holidays and any days you have marked non-working, down the whole chart">Working days</button>
-  <button id="critical-path-btn" class="tb-btn tb-btn-ghost" onclick="toggleCriticalPath()" title="Highlight the critical path — tasks with zero float (delaying them delays the whole project)">⚡ Critical path</button>
-  <button class="leg-color-swatch" onclick="openBarColorPicker(event,'--critical-color','critical-color')" title="Click to change critical path outline/line colour"><span style="background:var(--critical-color)"></span></button>
-  <div class="critical-width-control" title="Critical path outline / dependency line thickness (px)">
-    <input id="critical-width-input" type="number" min="1" max="10" step="1" value="1" onchange="setCriticalWidth(+this.value)">
-    <span class="tb-label" style="margin-left:2px">px</span>
-  </div>
-  <div id="legend">
+  <button class="tb-btn tb-btn-ghost" onclick="openGtSettings()" title="Settings: project start, working days, critical path and bar colours">⚙ Settings</button>
+</div>
+
+
+<!-- Settings: project start, working days, critical path, bar colours -->
+<div id="gt-settings" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:800;align-items:center;justify-content:center" onmousedown="if(event.target===this)closeGtSettings()">
+  <div class="gt-set-card">
+    <h2>Settings</h2>
+    <div class="gt-set-row"><span class="gt-set-label">Project start</span>
+      <input type="text" id="project-start-display" class="tb-input" readonly placeholder="Pick date…" style="width:110px;cursor:pointer" onclick="openCalForProjectStart()"></div>
+    <div class="gt-set-row"><span class="gt-set-label">Working days</span>
+      <button id="nonwork-btn" class="tb-btn tb-btn-ghost" onclick="toggleNonWorkBands()" title="Show the working day calendar: shades weekends, public holidays and any days you have marked non-working, down the whole chart">Working days</button></div>
+    <div class="gt-set-row"><span class="gt-set-label">Critical path</span>
+      <button id="critical-path-btn" class="tb-btn tb-btn-ghost" onclick="toggleCriticalPath()" title="Highlight the critical path — tasks with zero float (delaying them delays the whole project)">⚡ Critical path</button>
+      <button class="leg-color-swatch" onclick="openBarColorPicker(event,'--critical-color','critical-color')" title="Click to change critical path outline/line colour"><span style="background:var(--critical-color)"></span></button>
+      <div class="critical-width-control" title="Critical path outline / dependency line thickness (px)">
+      <input id="critical-width-input" type="number" min="1" max="10" step="1" value="1" onchange="setCriticalWidth(+this.value)">
+      <span class="tb-label" style="margin-left:2px">px</span>
+      </div></div>
+    <div class="gt-set-row" style="align-items:flex-start"><span class="gt-set-label">Bar colours</span>
+      <div id="legend">
     <div class="leg" title="Click to change Normal bar colour" onclick="openBarColorPicker(event,'--bar','bar-normal')" style="cursor:pointer">
       <div class="leg-dot" id="leg-bar" style="background:var(--bar);border:1px solid rgba(255,255,255,.2)"></div>Normal
     </div>
@@ -401,9 +426,11 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
     <div class="leg" title="Click to change Dependency line colour" onclick="openBarColorPicker(event,'--dep-color','dep-line')" style="cursor:pointer;gap:6px">
       <svg width="20" height="10" id="leg-dep-line-svg"><line x1="0" y1="5" x2="20" y2="5" stroke="var(--dep-color,#cccccc)" stroke-width="1.5" stroke-dasharray="4 3"/></svg>Dependency
     </div>
+  </div></div>
+    <div class="gt-set-hint">Click a colour to change it. The working days button shades weekends, public holidays and days marked non-working.</div>
+    <div style="display:flex;justify-content:flex-end;margin-top:14px"><button class="tb-btn tb-btn-primary" onclick="closeGtSettings()">Done</button></div>
   </div>
 </div>
-
 <div id="print-header"></div>
 <div id="main">
   <div id="left-panel">
@@ -3796,7 +3823,7 @@ function exportCSV(){
 }
 
 async function exportJSON(){
-  const data={tasks,pxPerDay,projectStart:projectStartStr,barColors:getBarColors(),durationMode,workdayOverrides,showNonWorkBands};
+  const data={...(projectTitle?{projectTitle}:{}),tasks,pxPerDay,projectStart:projectStartStr,barColors:getBarColors(),durationMode,workdayOverrides,showNonWorkBands};
   const json=JSON.stringify(data,null,2);
   const blob=new Blob([json],{type:'application/json'});
 
@@ -3851,6 +3878,8 @@ function loadJSONText(text){
   try{
     const d=JSON.parse(text);
     tasks=d.tasks||[]; nextId=Math.max(...tasks.map(t=>t.id||0),0)+1; undoStack.length=0; redoStack.length=0; lastState=null;
+    loadedTitle = typeof d.projectTitle==='string' ? d.projectTitle : '';
+    applyProjectTitle(loadedTitle);
     if(d.pxPerDay){pxPerDay=d.pxPerDay;document.getElementById('zoom-val').value=pxPerDay;}
     if(d.projectStart){projectStartStr=d.projectStart;document.getElementById('project-start-display').value=fmtDisplay(d.projectStart);}
     if(d.barColors) applyBarColors(d.barColors);
@@ -3883,6 +3912,19 @@ function linkJSONFile(handle, name){
     ? `Save back into ${jsonFileName} (Ctrl+S). Use Export JSON to create a new file.`
     : 'Save JSON: choose where to save (the file will then stay linked). Use Export JSON to create a new file.';
 }
+// ── Project title (top left). Saved as projectTitle in the JSON, shared with
+// the Forecast tool. Also the default PDF title and file name.
+let projectTitle='', loadedTitle='';
+function applyProjectTitle(t){
+  projectTitle=String(t||'').replace(/\s+/g,' ').trim().slice(0,120);
+  const el=document.getElementById('project-title'); if(el && document.activeElement!==el) el.value=projectTitle;
+  document.title = projectTitle ? projectTitle+' · Gantt' : 'Gantt Chart';
+  const pt=document.getElementById('pdf-title'); if(pt) pt.value = projectTitle || 'Gantt Chart';
+}
+function setProjectTitle(v){ applyProjectTitle(v); const el=document.getElementById('project-title'); if(el) el.value=projectTitle; }
+function openGtSettings(){ document.getElementById('gt-settings').style.display='flex'; }
+function closeGtSettings(){ document.getElementById('gt-settings').style.display='none'; if(typeof closeCal==='function') closeCal(); }
+document.addEventListener('keydown',e=>{ if(e.key==='Escape' && document.getElementById('gt-settings').style.display==='flex' && !document.getElementById('cal-popup').classList.contains('visible')) closeGtSettings(); });
 function keepNewerForecast(fileDoc){
   let kept=0;
   (fileDoc && Array.isArray(fileDoc.tasks) ? fileDoc.tasks : []).forEach(ft=>{
@@ -3905,8 +3947,15 @@ async function saveJSON(){
     if(perm!=='granted' && jsonFileHandle.requestPermission) perm=await jsonFileHandle.requestPermission({mode:'readwrite'});
     if(perm!=='granted') return exportJSON();
     let kept=0;
-    try{ kept=keepNewerForecast(JSON.parse(await (await jsonFileHandle.getFile()).text())); }catch(e){}
-    const data={tasks,pxPerDay,projectStart:projectStartStr,barColors:getBarColors(),durationMode,workdayOverrides,showNonWorkBands};
+    try{
+      const fileDoc=JSON.parse(await (await jsonFileHandle.getFile()).text());
+      kept=keepNewerForecast(fileDoc);
+      // Title changed in the Forecast tool and not here: keep the file's
+      const ft=typeof fileDoc.projectTitle==='string'?fileDoc.projectTitle:'';
+      if(ft!==loadedTitle && projectTitle===loadedTitle) applyProjectTitle(ft);
+    }catch(e){}
+    loadedTitle=projectTitle;
+    const data={...(projectTitle?{projectTitle}:{}),tasks,pxPerDay,projectStart:projectStartStr,barColors:getBarColors(),durationMode,workdayOverrides,showNonWorkBands};
     const w=await jsonFileHandle.createWritable();
     await w.write(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));
     await w.close();

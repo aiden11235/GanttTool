@@ -146,6 +146,14 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
 .fee-input:hover{background:rgba(255,255,255,.55)}
 .fee-input:focus{background:var(--accent-light);color:var(--text)!important}
 .fee-input::placeholder{opacity:.45;font-weight:400}
+.fee-input.derived{font-style:italic;cursor:default}
+.fee-input.derived:hover{background:transparent}
+.ctx-check{display:inline-block;width:14px;font-weight:700}
+.title-input{background:transparent;border:1px solid transparent;color:#f1f5f9;font-family:var(--font);font-size:14px;font-weight:600;padding:4px 7px;border-radius:4px;width:240px;min-width:120px}
+.title-input:hover{border-color:#334155}
+.title-input:focus{outline:none;border-color:#3b82f6;background:#0f172a}
+.title-input::placeholder{color:#64748b;font-weight:400;font-style:italic}
+#topbar h1,#topbar .tb-btn{flex-shrink:0}
 .fee-input.unallocated{text-decoration:underline wavy #d97706;text-underline-offset:3px}
 .fee-input.invalid{background:#fee2e2!important}
 
@@ -242,6 +250,8 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
 .res-plan{padding-left:16px}
 .ms-count{font-size:10px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:400}
 .bar-ext-label.clip{overflow:hidden;text-overflow:ellipsis}
+.res-total-cell.over{background:#fee2e2;color:#dc2626}
+.bud-cap{position:absolute;top:0;bottom:0;pointer-events:none;background:repeating-linear-gradient(135deg,rgba(255,255,255,.32) 0 3px,transparent 3px 7px)}
 .res-total-cell{position:absolute;top:6px;bottom:6px;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:10px;font-weight:700;color:var(--text);border-right:1px solid var(--border);background:rgba(0,0,0,.035);white-space:nowrap;overflow:hidden;z-index:2}
 .res-total-cell.is-current{background:#fee2e2;color:#dc2626}
 .res-add-btn{background:none;border:1px dashed var(--border-strong);border-radius:3px;font-family:var(--font);font-size:11px;color:var(--text-muted);padding:1px 8px;cursor:pointer;white-space:nowrap}
@@ -362,6 +372,9 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
 #hrs-popup .op-hint.warn{color:#b45309}
 
 #set-hpd.invalid{border-color:#dc2626!important;background:#fee2e2}
+#set-util.invalid{border-color:#dc2626!important;background:#fee2e2}
+.set-sec{font-size:11px;font-weight:700;color:#6b6860;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px}
+#set-util-wrap.off{opacity:.45}
 /* Message / choice modal */
 .modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:800;align-items:center;justify-content:center}
 .modal-card{background:#fff;border-radius:10px;padding:24px;width:360px;box-shadow:0 20px 60px rgba(0,0,0,.3);font-family:var(--font)}
@@ -420,9 +433,8 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
 
 <div id="topbar">
   <h1>Forecast</h1>
-  <div class="tb-sep"></div>
-  <span class="tb-label">Project start</span>
-  <input type="text" id="project-start-display" class="tb-input" readonly placeholder="From programme" style="width:110px;cursor:default" title="Set in the Gantt programme. Week 1 is the week containing this date.">
+  <input id="project-title" class="title-input" type="text" placeholder="Project title" autocomplete="off" spellcheck="false" maxlength="120"
+    title="Project title. Saved in the programme JSON, so the Gantt tool shows it too." onchange="setProjectTitle(this.value)" onkeydown="if(event.key==='Enter')this.blur();if(event.key==='Escape'){this.value=projectTitle;this.blur();}">
   <div class="tb-sep"></div>
   <span class="tb-label">Zoom</span>
   <button class="tb-btn tb-btn-ghost" onclick="adjustZoom(-1)" style="padding:4px 8px">−</button>
@@ -443,12 +455,11 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
   <button class="tb-btn tb-btn-ghost" onclick="openPDFModal()" style="border-color:#f59e0b;color:#f59e0b">⬇ PDF</button>
   <button class="tb-btn tb-btn-ghost" onclick="openImageModal()" style="border-color:#0ea5e9;color:#0ea5e9">🖼 Image</button>
   <div style="flex:1"></div>
-  <button id="nonwork-btn" class="tb-btn tb-btn-ghost" onclick="toggleNonWorkBands()" title="Show the working day calendar: shades weekends, public holidays and any days marked non-working in the programme">Working days</button>
   <div class="seg-toggle" id="breakdown-toggle">
     <button id="bd-weekly" onclick="setBreakdown('weekly')">Weekly</button>
     <button id="bd-billing" onclick="setBreakdown('billing')">Billing period</button>
   </div>
-  <button class="tb-btn tb-btn-ghost" onclick="openSettings()" title="Global settings: billing period, hours per day">⚙ Settings</button>
+  <button class="tb-btn tb-btn-ghost" onclick="openSettings()" title="Settings: project start, working days, billing period, hours per day, utilisation">⚙ Settings</button>
 </div>
 
 <div id="print-header"></div>
@@ -584,9 +595,18 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
 
 <!-- Global settings -->
 <div id="settings-modal" class="modal-bg">
-  <div class="modal-card" style="width:440px">
+  <div class="modal-card" style="width:440px;max-height:92vh;overflow:auto">
     <h2>Settings</h2>
-    <div style="font-size:11px;font-weight:700;color:#6b6860;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Billing period</div>
+    <div class="set-sec">Project</div>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+      <label for="project-start-display" style="font-size:11px;color:#6b6860;width:110px">Project start</label>
+      <input type="text" id="project-start-display" readonly placeholder="From programme" style="width:120px;padding:5px 8px;border:1px solid #e0ddd8;border-radius:4px;font-size:13px;font-family:var(--font-mono);background:#f5f3ef;color:#4a4842" title="Set in the Gantt programme. Week 1 is the week containing this date.">
+      <span style="font-size:11px;color:#9e9c97">Set in the Gantt tool</span>
+    </div>
+    <label style="font-size:12px;color:#4a4842;display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:16px">
+      <input type="checkbox" id="set-nonwork" onchange="if(this.checked!==showNonWorkBands) toggleNonWorkBands()"> Show working days</label>
+    <div style="font-size:11px;color:#6b6860;line-height:1.45;margin:-10px 0 16px 24px">Shades weekends, public holidays and days marked non-working.</div>
+    <div class="set-sec">Billing period</div>
     <label style="font-size:11px;color:#6b6860;display:block;margin-bottom:4px">Invoiced</label>
     <select id="set-freq" onchange="onSettingsInput()" style="width:100%;padding:6px 9px;border:1px solid #c8c4bc;border-radius:4px;font-size:13px;margin-bottom:12px;font-family:var(--font)">
       <option value="fortnightly">Fortnightly</option>
@@ -607,7 +627,15 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
       <input id="set-hpd" type="number" min="0.5" max="24" step="0.1" style="width:80px;padding:6px 9px;border:1px solid #c8c4bc;border-radius:4px;font-size:13px;font-family:var(--font-mono)">
       <span style="font-size:11px;color:#6b6860">Default 7.6</span>
     </div>
-    <div style="font-size:11px;color:#6b6860;line-height:1.45;margin-bottom:16px">Used when time is entered in days. A bar of 3 days per week is 3 x this many hours each week. Time entered in hours is not affected.</div>
+    <div style="font-size:11px;color:#6b6860;line-height:1.45;margin-bottom:12px">Used when time is entered in days. A bar of 3 days per week is 3 x this many hours each week. Time entered in hours is not affected.</div>
+    <div id="set-util-wrap">
+      <label for="set-util" style="font-size:11px;color:#6b6860;display:block;margin-bottom:4px">Utilisation</label>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+        <input id="set-util" type="number" min="0" max="100" step="1" style="width:80px;padding:6px 9px;border:1px solid #c8c4bc;border-radius:4px;font-size:13px;font-family:var(--font-mono)"><span style="font-size:12px;color:#6b6860">%</span>
+        <span style="font-size:11px;color:#6b6860">Default 100%</span>
+      </div>
+      <div id="set-util-help" style="font-size:11px;color:#6b6860;line-height:1.45;margin-bottom:16px"></div>
+    </div>
     <div style="display:flex;gap:8px;justify-content:flex-end">
       <button class="modal-btn" onclick="closeSettings()">Cancel</button>
       <button class="modal-btn primary" onclick="applySettings()">Apply</button>
@@ -963,6 +991,9 @@ function readForecastProp(f){
     excluded: !!f.excluded,
     billing: f.billing ? sanitiseBilling(f.billing) : null,
     hoursPerDay: isFinite(+f.hoursPerDay)&&+f.hoursPerDay>0 ? sanitiseHpd(f.hoursPerDay) : null,
+    utilisation: f.utilisation!=null && isFinite(+f.utilisation) ? sanitiseUtil(f.utilisation) : null,
+    basis: f.basis==='hourly' ? 'hourly' : 'fixed',
+    budgetFrom: sanitiseBudgetFrom(f.budgetFrom),
     resources: sanitiseResources(f.resources),
     savedAt: typeof f.savedAt==='string' ? f.savedAt : ''
   };
@@ -982,6 +1013,11 @@ function sanitiseActuals(list){
 // A bar or actual entered in days keeps its days (dpw / days), so it follows
 // the hours-per-day setting; one entered in hours keeps its hours.
 const HPD_DEFAULT=7.6;
+// Utilisation: the share of resourced hours that is billed, on hourly-rates
+// headings only (80 = 80 of every 100 hours are invoiced). Project-wide.
+const UTIL_DEFAULT=100;
+let utilisation=UTIL_DEFAULT;
+function sanitiseUtil(v){ v=Math.round((+v||0)*10)/10; return v>=0&&v<=100 ? v : UTIL_DEFAULT; }
 let hoursPerDay=HPD_DEFAULT;      // project-wide, set in Settings
 function sanitiseHpd(v){ v=Math.round((+v||0)*100)/100; return v>0&&v<=24 ? v : HPD_DEFAULT; }
 function barHpw(b){ return b.dpw!=null ? b.dpw*hoursPerDay : (+b.hpw||0); }
@@ -1011,6 +1047,17 @@ function copyResources(list){
     actuals:r.actuals.map(a=>{ const o={start:a.start,end:a.end}; if(a.days!=null) o.days=a.days; else o.hours=a.hours; o.mode=a.mode; return o; })}));
 }
 
+// Budget periods captured from resourcing (fixed-fee headings):
+//   [{start, end, cents, at}]  a week or billing period, the billable
+//   resourcing value captured on date `at`. It stays as captured (a baseline)
+//   until re-captured on purpose.
+function sanitiseBudgetFrom(list){
+  return (Array.isArray(list)?list:[]).filter(x=>x&&isoDate(x.start)&&isoDate(x.end)&&x.end>=x.start&&isFinite(+x.cents))
+    .map(x=>({start:x.start, end:x.end, cents:Math.round(+x.cents), ...(isoDate(x.at)?{at:x.at}:{})}))
+    .sort((a,b)=>a.start<b.start?-1:a.start>b.start?1:0);
+}
+function copyBudgetFrom(list){ return (list||[]).map(x=>({start:x.start, end:x.end, cents:x.cents, ...(x.at?{at:x.at}:{})})); }
+
 // Copy figures onto a heading object (from a file, or from memory)
 function applyFigures(h, f){
   h.fee=f.fee; h.actuals=f.actuals.map(a=>({...a}));
@@ -1018,16 +1065,21 @@ function applyFigures(h, f){
   h.fcColor=f.fcColor; h.order=f.order; h.excluded=f.excluded; h.savedAt=f.savedAt||'';
   h.fileBilling=f.billing||null;
   h.fileHpd=f.hoursPerDay||null;
+  h.fileUtil=f.utilisation!=null?f.utilisation:null;
+  h.basis=f.basis==='hourly'?'hourly':'fixed';
+  h.budgetFrom=copyBudgetFrom(f.budgetFrom);
   h.color=h.fcColor||h.progColor;
 }
 function figuresOf(h){
-  return {fee:h.fee||0, actuals:(h.actuals||[]).map(a=>({...a})), resources:copyResources(h.resources), fcColor:h.fcColor||null,
+  return {fee:h.fee||0, basis:h.basis==='hourly'?'hourly':'fixed', budgetFrom:copyBudgetFrom(h.budgetFrom), actuals:(h.actuals||[]).map(a=>({...a})), resources:copyResources(h.resources), fcColor:h.fcColor||null,
           order:(h.order??null), excluded:!!h.excluded, savedAt:h.savedAt||''};
 }
 // What gets written into the file for a heading, or null when there is
 // nothing to keep (so untouched headings stay exactly as the Gantt wrote them).
 function forecastPayload(h){
   const p={fee:h.fee||0, actuals:(h.actuals||[]).map(a=>({start:a.start,end:a.end,cents:a.cents,mode:a.mode,...(a.label?{label:a.label}:{})}))};
+  if(h.basis==='hourly') p.basis='hourly';
+  if((h.budgetFrom||[]).length) p.budgetFrom=copyBudgetFrom(h.budgetFrom);
   if((h.resources||[]).length) p.resources=copyResources(h.resources);
   if(h.fcColor) p.color=h.fcColor;
   if(h.order!=null) p.order=h.order;
@@ -1036,7 +1088,8 @@ function forecastPayload(h){
   // the file on export, so it travels on the headings instead.
   if(!isDefaultBilling(billing)) p.billing={...billing};
   if(hoursPerDay!==HPD_DEFAULT) p.hoursPerDay=hoursPerDay;
-  if(!p.fee && !p.actuals.length && !p.resources && !p.color && p.order==null && !p.excluded && !p.billing && !p.hoursPerDay) return null;
+  if(utilisation!==UTIL_DEFAULT) p.utilisation=utilisation;
+  if(!p.fee && !p.actuals.length && !p.resources && !p.color && p.order==null && !p.excluded && !p.billing && !p.hoursPerDay && !p.basis && !p.budgetFrom && p.utilisation==null) return null;
   return p;
 }
 
@@ -1232,17 +1285,83 @@ function actualLumpDate(a){
   return a.end;
 }
 
+// One resource's hours on each day: planned (hours per week / 5 on working
+// days not covered by actual time) plus actual time spread over its working
+// days. Same rules as resourceCalc, day by day.
+function resDailyHours(res){
+  const covered=resActualCovered(res), out=new Map();
+  const add=(d,v)=>out.set(d,(out.get(d)||0)+v);
+  res.bars.forEach(b=>{ const perDay=barHpw(b)/5; if(perDay) eachDay(b.start,b.end,d=>{ if(isWorkday(d)&&!covered.has(d)) add(d,perDay); }); });
+  res.actuals.forEach(a=>{
+    const wd=[]; eachDay(a.start,a.end,d=>{ if(isWorkday(d)) wd.push(d); });
+    const H=actHours(a), days=wd.length?wd:[a.end];
+    days.forEach(d=>add(d,H/days.length));
+  });
+  return out;
+}
+// Hourly rates: what each day is worth in invoices, in whole cents. Billable
+// hours (hours x utilisation) x each resource's rate, summed. Cents are
+// rounded on the running total, so the days add up to the exact total.
+function billableDaily(h){
+  const f=new Map();
+  (h.resources||[]).forEach(r=>{ const rate=+r.rate||0; if(!rate) return;
+    resDailyHours(r).forEach((hrs,d)=>f.set(d,(f.get(d)||0)+hrs*rate*100*utilisation/100)); });
+  const out=new Map(); let cum=0, prev=0;
+  [...f.keys()].sort().forEach(d=>{ cum+=f.get(d); const c=Math.round(cum); if(c-prev) out.set(d,c-prev); prev=c; });
+  return out;
+}
+function isHourly(h){ return h && h.basis==='hourly'; }
+
+// Share `total` cents over days: equally (telescoping floors, so the shares
+// always add to the total and odd cents are spread evenly), or pro rata to
+// weights when given.
+function spreadCents(total, days, weights){
+  const out=new Map(), n=days.length; if(!n) return out;
+  if(!weights){ days.forEach((d,i)=>out.set(d, Math.floor((i+1)*total/n)-Math.floor(i*total/n))); return out; }
+  const W=weights.reduce((a,b)=>a+b,0); let cum=0, prev=0;
+  days.forEach((d,i)=>{ cum+=weights[i]; const c=Math.round(total*cum/W); out.set(d,c-prev); prev=c; });
+  return out;
+}
+// Billable resourcing value of a date range (hours x utilisation x rate)
+function billableIn(h, start, end, daily){
+  daily=daily||billableDaily(h); let c=0;
+  daily.forEach((v,d)=>{ if(d>=start&&d<=end) c+=v; });
+  return c;
+}
+function allWorkdays(start,end){ const o=[]; eachDay(start,end,d=>{ if(isWorkday(d)) o.push(d); }); return o; }
+
 function allocateHeading(h){
+  if(isHourly(h)) return allocateHourly(h);
   const days=headingWorkdays(h);
   const C=feeCents(h), N=days.length;
   const budget=new Map();                 // date -> cents
-  days.forEach((d,i)=>budget.set(d, Math.floor((i+1)*C/N)-Math.floor(i*C/N)));
+  // Budget periods captured from resourcing keep their captured value,
+  // spread over their own working days. The rest of the fee is spread
+  // equally over the heading's other working days, so Budget still adds up
+  // to the fee. If it cannot (no other days), or the captured periods add up
+  // to more than the fee, it is flagged rather than blocked.
+  const caps=(h.budgetFrom||[]);
+  const inCap=d=>caps.some(c=>d>=c.start&&d<=c.end);
+  let capSum=0;
+  caps.forEach(c=>{
+    capSum+=c.cents;
+    const wd=allWorkdays(c.start,c.end), on=wd.length?wd:[c.end];
+    spreadCents(c.cents,on).forEach((v,d)=>budget.set(d,(budget.get(d)||0)+v));
+  });
+  const bFree=days.filter(d=>!inCap(d));
+  const Rb=C-capSum;
+  spreadCents(Rb,bFree).forEach((v,d)=>budget.set(d,(budget.get(d)||0)+v));
+  const budgetGap = caps.length && !bFree.length ? Rb : 0;      // fee not reachable
+  const budgetNeg = caps.length && bFree.length && Rb<0;          // other periods go negative
+  const allDays=[...budget.keys()].sort();
+  let budgetTotal=0; budget.forEach(v=>budgetTotal+=v);
 
   const inv=new Map();                    // date -> cents
   const lockedBy=new Map();               // working day -> actual index (its period is invoiced)
   const actAt=new Map();                  // date -> [actual index] (invoice dates)
   const actShares=[];                     // per actual: Map {invoice date -> cents}
   let actualSum=0;
+  const invDays = caps.length ? allDays : days;
   (h.actuals||[]).forEach((a,ai)=>{
     actualSum+=a.cents;
     const sh=new Map([[actualLumpDate(a), a.cents]]);
@@ -1252,14 +1371,19 @@ function allocateHeading(h){
       if(!actAt.has(d)) actAt.set(d,[]);
       actAt.get(d).push(ai);
     });
-    days.forEach(d=>{ if(d>=a.start&&d<=a.end&&!lockedBy.has(d)) lockedBy.set(d,ai); });
+    invDays.forEach(d=>{ if(d>=a.start&&d<=a.end&&!lockedBy.has(d)) lockedBy.set(d,ai); });
   });
-  const free=days.filter(d=>!lockedBy.has(d));
+  const free=invDays.filter(d=>!lockedBy.has(d));
   const R=C-actualSum;                    // still to invoice, spread over free days
-  free.forEach((d,i)=>inv.set(d,(inv.get(d)||0)+Math.floor((i+1)*R/free.length)-Math.floor(i*R/free.length)));
+  // With captured budget periods the forecast follows the budget's shape
+  // (pro rata to each day's budget); otherwise equally, as before.
+  const w = caps.length ? free.map(d=>budget.get(d)||0) : null;
+  const useW = w && w.every(x=>x>=0) && w.reduce((a,b)=>a+b,0)>0;
+  spreadCents(R,free,useW?w:null).forEach((v,d)=>inv.set(d,(inv.get(d)||0)+v));
   // Nothing left to spread it over: the Invoiced row cannot hit the fee.
   const imbalance = free.length ? 0 : R;
-  return {days, C, N, budget, inv, lockedBy, actAt, actShares, free, R, freeDays:free.length, imbalance, actualSum};
+  return {days, C, N, budget, budgetTotal, hasCaps:caps.length>0, capSum, budgetGap, budgetNeg, Rb,
+          inv, lockedBy, actAt, actShares, free, R, freeDays:free.length, imbalance, actualSum};
 }
 
 // ═══════════════════════════════════════════════════════
@@ -1362,6 +1486,29 @@ function fmtLoad(h){
   return (Math.round(h/hoursPerDay*10)/10).toFixed(1)+' d';
 }
 
+// Hourly rates heading: Budget is the billable resourcing, day by day. An
+// actual invoice replaces the forecast for the days in its period (as on a
+// fixed fee); every other day is invoiced at its billable value. The total
+// fee is the sum of all invoices: actual plus forecast.
+function allocateHourly(h){
+  const budget=billableDaily(h);
+  const days=[...budget.keys()].sort();
+  const inv=new Map(), lockedBy=new Map(), actAt=new Map(), actShares=[];
+  let actualSum=0;
+  (h.actuals||[]).forEach((a,ai)=>{
+    actualSum+=a.cents;
+    const d0=actualLumpDate(a), sh=new Map([[d0,a.cents]]);
+    actShares.push(sh);
+    inv.set(d0,(inv.get(d0)||0)+a.cents);
+    if(!actAt.has(d0)) actAt.set(d0,[]); actAt.get(d0).push(ai);
+    days.forEach(d=>{ if(d>=a.start&&d<=a.end&&!lockedBy.has(d)) lockedBy.set(d,ai); });
+  });
+  const free=days.filter(d=>!lockedBy.has(d));
+  let R=0; free.forEach(d=>{ const c=budget.get(d); inv.set(d,(inv.get(d)||0)+c); R+=c; });
+  const budgetTotal=days.reduce((s,d)=>s+budget.get(d),0);
+  return {days, C:actualSum+R, N:days.length, budget, budgetTotal, inv, lockedBy, actAt, actShares, free, R, freeDays:free.length, imbalance:0, actualSum, hourly:true};
+}
+
 function buildForecast(mode){
   const today=todayStr();
   const budgetTotals=new Map(), invTotals=new Map(), actTotals=new Map(), remTotals=new Map(), resTotals=new Map();
@@ -1406,7 +1553,7 @@ function buildForecast(mode){
     }));
     return {h, a, days:a.N, cents:a.C, periods:bp, inv:ip, act:ap,
             res, resPeriods, resToDate:res.reduce((s,x)=>s+x.toDate,0), resRemaining:res.reduce((s,x)=>s+x.remaining,0),
-            budgetToDate, budgetRemaining:a.C-budgetToDate,
+            budgetToDate, budgetRemaining:(a.hourly||a.hasCaps?a.budgetTotal:a.C)-budgetToDate,
             // Actuals are real invoices, so they always count as to date
             invToDate:a.actualSum+freeToDate, invRemaining:freeRemaining,
             actToDate:a.actualSum, actRemaining:a.C-a.actualSum,
@@ -1420,7 +1567,8 @@ function buildForecast(mode){
     budgetToDate:sum(r=>r.budgetToDate), budgetRemaining:sum(r=>r.budgetRemaining),
     invToDate:sum(r=>r.invToDate), invRemaining:sum(r=>r.invRemaining),
     actToDate:sum(r=>r.actToDate), actRemaining:sum(r=>r.actRemaining),
-    imbalanced:rows.filter(r=>r.a.imbalance)};
+    imbalanced:rows.filter(r=>r.a.imbalance),
+    budgetFlags:rows.filter(r=>r.a.budgetGap||r.a.budgetNeg)};
 }
 
 // How a period on the Invoiced or Actual row relates to the actuals in it,
@@ -1632,15 +1780,19 @@ function renderLeft() {
         <div class="heading-name" title="${escHtml(h.name)}">${escHtml(h.name)||'<span style="opacity:.5">(unnamed heading)</span>'}</div>
       </div>
       <div class="task-cell">${(()=>{ const ms=h.milestones||[], nM=ms.filter(m=>m.major).length; return ms.length?`<span class="ms-count" title="Milestones from the programme, shown on the heading bar">◆ ${ms.length} milestone${ms.length!==1?'s':''}${nM?` · ${nM} major`:''}</span>`:''; })()}</div>
-      <div class="task-cell fee-cell">
-        <i class="fee-cap">Total fee</i>
+      <div class="task-cell fee-cell">${isHourly(h)
+        ? `<i class="fee-cap" title="Hourly rates heading">Hourly</i>
+        <input class="fee-input derived" type="text" readonly tabindex="-1" data-idx="${i}" value="${money2(C)}" style="color:${h.color}"
+          title="Hourly rates: the total of all invoices, actual plus forecast. The forecast is the billable resourcing (hours x utilisation x rate). Right-click the heading to change to fixed-fee and enter a fee.">`
+        : `<i class="fee-cap">Total fee</i>
         <input class="fee-input${unalloc?' unallocated':''}" type="text" inputmode="decimal" autocomplete="off" spellcheck="false"
           data-idx="${i}" value="${C?money2(C):''}" placeholder="$0.00" style="color:${h.color}"
-          title="${unalloc?'This heading has no working days in the programme, so its fee cannot be spread.':'Total fee for this stage. Accepts 12345.50, $12,345.50, 120k or 1.2m. Enter to apply, Escape to cancel.'}"
-          onfocus="feeFocus(this)" onblur="feeBlur(event,this)" onkeydown="feeKey(event,this)">
+          title="${unalloc?'This heading has no working days in the programme, so its fee cannot be spread.':'Total fee for this stage (fixed-fee). Accepts 12345.50, $12,345.50, 120k or 1.2m. Enter to apply, Escape to cancel.'}"
+          onfocus="feeFocus(this)" onblur="feeBlur(event,this)" onkeydown="feeKey(event,this)">`}
       </div>
       <div class="task-cell comments-cell"><div class="comments-text" title="${escHtml(h.comments)}">${escHtml(h.comments)}</div></div>
     `;
+    row.addEventListener('contextmenu', e=>{ if(!(e.target.tagName==='INPUT' && !e.target.readOnly)) openHeadingMenu(e,i); });
     body.appendChild(row);
 
     // ── SUB-ROWS (formatted like Gantt subtasks)
@@ -1658,6 +1810,10 @@ function renderLeft() {
       const hasFigures = C || nAct;
       if(kind==='b'){
         info = start ? `From ${fmtDisplay(start)} to ${fmtDisplay(end)}` : 'No dated work in the programme';
+        const nCap=(h.budgetFrom||[]).length;
+        if(!isHourly(h) && r.a.budgetGap) badge+=`<span class="sub-badge warn" title="Every working day is in a period captured from resourcing, so the budget is ${money2(Math.abs(r.a.budgetGap))} ${r.a.budgetGap>0?'short of':'over'} the total fee">⚠</span>`;
+        else if(!isHourly(h) && r.a.budgetNeg) badge+=`<span class="sub-badge warn" title="Periods captured from resourcing add up to more than the total fee, so the other periods go negative (${money2(r.a.Rb)} between them)">⚠</span>`;
+        if(!isHourly(h) && nCap) badge+=`<span class="sub-badge muted" title="${nCap} budget period${nCap!==1?'s':''} captured from resourcing (striped on the bar). Right-click a period on the Budget bar to change.">◧ ${nCap}</span>`;
         if(hasFigures) fee=splitCell(r.budgetToDate, r.budgetRemaining,
           `Budget to date: the share of the total fee for working days before today (${todayTxt})`,
           `Budget remaining: the share for working days from today on`);
@@ -2002,6 +2158,7 @@ function renderGanttBars(totalPx,fc) {
     row.className='gantt-heading-row';
     row.style.background=lightenHex(h.color,0.156);
     row.dataset.idx=i; row.dataset.rk=i+'h';
+    row.addEventListener('contextmenu', e=>openHeadingMenu(e,i));
     segX.forEach(s=>{
       const bar=document.createElement('div');
       bar.className='gantt-heading-bar';
@@ -2045,6 +2202,7 @@ function renderGanttBars(totalPx,fc) {
         // Invoicing: the part of the bar already invoiced is lightened, the
         // same way actual hours lighten a resource bar
         if(kind==='i') coverInvoiced(bar, s, h);
+        if(kind==='b' && !isHourly(h)) markCaptured(bar, s, h);
         attachTip(bar,()=>barTip(r));
         sr.appendChild(bar);
       });
@@ -2069,6 +2227,16 @@ function subtractX(ranges, cov){
     out=next;
   });
   return out;
+}
+// Budget bar: light diagonal stripes over periods captured from resourcing
+function markCaptured(bar, s, h){
+  (h.budgetFrom||[]).forEach(c=>{
+    const a=c.start>s.seg.start?c.start:s.seg.start, z=c.end<s.seg.end?c.end:s.seg.end;
+    if(a>z) return;
+    const el=document.createElement('div'); el.className='bud-cap';
+    el.style.left=(xForDate(a)-s.x0)+'px'; el.style.width=Math.max(1,xForDate(z)+pxPerDay-xForDate(a))+'px';
+    bar.appendChild(el);
+  });
 }
 // White wash over the days of a segment that fall inside an actual invoice's
 // period (merged, so overlapping invoices do not double the wash).
@@ -2218,13 +2386,27 @@ function labelTip(r,key,mode,kind,p){
   let html=`<strong>${escHtml(h.name)}</strong><br>${SUB_NAMES[kind]}, ${escHtml(periodName(key,mode,true))}`
     +`<br>${fmtDisplay(b.start)} to ${fmtDisplay(b.end)}`;
   const bp=r.periods.get(key), bc=bp?bp.cents:0;
+  if(kind==='b' && r.a.hourly){
+    return html+`<br><strong>${money2(p.cents)}</strong> billable resourcing`
+      +`<br><span style="opacity:.75">Hours x ${fmtNum(utilisation)}% utilisation x each resource's rate</span>`
+      +`<br><span style="opacity:.6;font-style:italic">Hourly rates heading</span>`;
+  }
+  if(kind==='b' && !r.a.hourly && capturesIn(h,b).length){
+    const caps=capturesIn(h,b), capC=caps.reduce((a,c)=>a+c.cents,0), when=caps.map(c=>c.at).filter(Boolean).sort().pop();
+    return html+`<br><strong>${money2(p.cents)}</strong> budget`
+      +`<br><span style="opacity:.75">From resourcing: ${money2(capC)} captured${when?` on ${fmtDisplay(when)}`:''}${caps.some(c=>c.start!==b.start||c.end!==b.end)?` for ${caps.map(c=>`${fmtDisplay(c.start)} to ${fmtDisplay(c.end)}`).join(', ')}`:''}</span>`
+      +`<br><span style="opacity:.75">Resourcing now ${money2(Math.round(billableIn(h,b.start,b.end)))}</span>`
+      +`<br><span style="opacity:.6;font-style:italic">Right-click to change or re-capture</span>`;
+  }
   if(kind==='b'){
     html+=`<br>${p.days} of ${r.days} working days`
       +`<br><strong>${money2(p.cents)}</strong> <span style="opacity:.7">(${(C?p.cents/C*100:0).toFixed(1)}% of ${money2(C)})</span>`;
     return html+`<br><span style="opacity:.6;font-style:italic">Actual invoices go on the Invoicing row</span>`;
   }
   html+=`<br><strong>${money2(p.freeCents)}</strong> still to be invoiced`;
-  html+=`<br><span style="opacity:.75">${p.free} working day${p.free!==1?'s':''} not yet invoiced share the ${money2(r.a.R)} left of the fee</span>`;
+  html+= r.a.hourly
+    ? `<br><span style="opacity:.75">Forecast from the billable resourcing in this ${unitName(mode)} (hourly rates)</span>`
+    : `<br><span style="opacity:.75">${p.free} working day${p.free!==1?'s':''} not yet invoiced share the ${money2(r.a.R)} left of the fee</span>`;
   const by=[...new Set([...(p.lockBy||[]),...p.act])].map(i=>h.actuals[i]).filter(Boolean);
   if(by.length) html+=`<br>Part of this ${unitName(mode)} is already invoiced: ${by.map(a=>escHtml(a.label||'invoice')).join(', ')}`;
   return html+`<br><span style="opacity:.6;font-style:italic">Click below the green bar on the Invoicing row to enter an actual invoice.</span>`;
@@ -2295,10 +2477,53 @@ function openRowMenu(e, idx, kind, rowEl){
   const enter=`<div class="ctx-item" onclick="ctxEnterActual()">✎ ${here.length?'Change or add actual invoices':'Enter actual invoice'} for this ${unitName(mode)}…</div>`;
   const clear=here.length?[`<div class="ctx-item" onclick="ctxClearPeriod()">↺ Remove ${here.length===1?'the invoice':`the ${here.length} invoices`} dated in this ${unitName(mode)}</div>`]:[];
   showMenu(e, kind==='b'
-    ? [`<div class="ctx-item info">Budget is the total fee spread evenly over the working days.</div>`, enter]
+    ? budgetMenuItems(idx, ctxTarget).concat(['<div class="ctx-sep"></div>', enter])
     : [`<div class="ctx-item info">Green bar: what is still to be invoiced (the total fee less actual invoices, spread over the periods without an invoice). Boxes below: actual invoices.</div>`, enter]
         .concat(clear).concat(allItem(h)));
 }
+// ── Budget source for one week or billing period (fixed-fee headings)
+//   Prorated fee: the period's share of the fee by working days (default).
+//   From resourcing: the billable resourcing in the period, captured now and
+//   kept as a baseline until re-captured. The rest of the fee is spread over
+//   the other periods, so Budget still adds up to the fee.
+function capturesIn(h,b){ return (h.budgetFrom||[]).filter(c=>c.start<=b.end&&c.end>=b.start); }
+function budgetMenuItems(i, t){
+  const h=headings[i], b=t.b, unit=t.unit;
+  if(isHourly(h)) return [`<div class="ctx-item info">Hourly rates: the budget is the billable resourcing (hours x ${fmtNum(utilisation)}% utilisation x rate).</div>`];
+  const caps=capturesIn(h,b), from=caps.length>0;
+  const now=billableIn(h,b.start,b.end);
+  const items=[`<div class="ctx-title" style="padding-top:4px">Budget for this ${unit}</div>`,
+    `<div class="ctx-item" onclick="closeCtx();setBudgetSource(${i},'prorated')"><span class="ctx-check">${from?'':'✓'}</span>Prorated fee</div>`,
+    `<div class="ctx-item" onclick="closeCtx();setBudgetSource(${i},'resourcing')"><span class="ctx-check">${from?'✓':''}</span>From resourcing <span style="color:var(--text-faint);margin-left:6px">${money2(Math.round(now))} now</span></div>`];
+  if(from){
+    const capC=caps.reduce((a,c)=>a+c.cents,0), when=caps.map(c=>c.at).filter(Boolean).sort().pop();
+    items.push(`<div class="ctx-item" onclick="closeCtx();recaptureBudget(${i})">↻ Re-capture from resourcing</div>`,
+      `<div class="ctx-item info">Captured ${money2(capC)}${when?` on ${fmtDisplay(when)}`:''}${caps.some(c=>c.start!==b.start||c.end!==b.end)?` for ${caps.map(c=>`${fmtDisplay(c.start)} to ${fmtDisplay(c.end)}`).join(', ')}`:''}. Resourcing is now ${money2(Math.round(now))}.</div>`);
+  } else items.push(`<div class="ctx-item info">Budget is the total fee spread evenly over the working days. "From resourcing" captures this ${unit}'s billable resourcing as its budget.</div>`);
+  return items;
+}
+function setBudgetSource(i, src){
+  const h=headings[i], t=ctxTarget; if(!h||!t) return;
+  const b=t.b, before=capturesIn(h,b);
+  h.budgetFrom=(h.budgetFrom||[]).filter(c=>!(c.start<=b.end&&c.end>=b.start));
+  if(src==='resourcing'){
+    h.budgetFrom.push({start:b.start, end:b.end, cents:Math.round(billableIn(h,b.start,b.end)), at:todayStr()});
+    h.budgetFrom.sort((x,y)=>x.start<y.start?-1:1);
+  }
+  refresh();
+  const replaced=before.filter(c=>c.start!==b.start||c.end!==b.end);
+  flashStatus(src==='resourcing'
+    ? `Budget for ${fmtDisplay(b.start)} to ${fmtDisplay(b.end)} captured from resourcing.${replaced.length?' It replaces the captured period it overlapped.':''}`
+    : `Budget for ${fmtDisplay(b.start)} to ${fmtDisplay(b.end)} back to the prorated fee.`);
+}
+function recaptureBudget(i){
+  const h=headings[i], t=ctxTarget; if(!h||!t) return;
+  const daily=billableDaily(h);
+  capturesIn(h,t.b).forEach(c=>{ c.cents=Math.round(billableIn(h,c.start,c.end,daily)); c.at=todayStr(); });
+  refresh();
+  flashStatus('Budget re-captured from the current resourcing.');
+}
+
 function allItem(h){
   const n=(h.actuals||[]).length;
   return n?[`<div class="ctx-sep"></div><div class="ctx-item danger" onclick="ctxClearAll()">✕ Remove all ${n} actual invoice${n!==1?'s':''} for this heading</div>`]:[];
@@ -2434,6 +2659,7 @@ function updateOverrideHint(){
   if(cover.length) msg+=`This ${unit} is already inside ${cover.map(x=>x.label||'an invoice').join(', ')} (${fmtDisplay(cover[0].start)} to ${fmtDisplay(cover[0].end)}). `;
   if(a.imbalance){ warn=true; msg+=`Every working day would then be in an invoiced period. Actual invoices would total ${money2(a.actualSum)} against a total fee of ${money2(a.C)}, and the ${money2(Math.abs(a.imbalance))} difference has nowhere to go.`; }
   else if(a.R<0){ warn=true; msg+=`Actual invoices would total ${money2(a.actualSum)}, more than the ${money2(a.C)} total fee, so the other ${unitName(view)}s go negative (${money2(a.R)} between them).`; }
+  else if(a.hourly) msg+=`Hourly rates: the other ${unitName(view)}s are forecast from billable resourcing, ${money2(a.R)} still to invoice. Total fee ${money2(a.C)}.`;
   else msg+=`Still to invoice ${money2(a.R)} of the ${money2(a.C)} total fee, spread pro rata over ${freeKeys.size} other ${unitName(view)}${freeKeys.size!==1?'s':''}.`;
   hint.className='op-hint'+(warn?' warn':'');
   hint.textContent=msg;
@@ -2492,7 +2718,7 @@ function updateBreakdownUI(){
 
 function toggleNonWorkBands(){
   showNonWorkBands=!showNonWorkBands;
-  document.getElementById('nonwork-btn').classList.toggle('active',showNonWorkBands);
+  const nw=document.getElementById('set-nonwork'); if(nw) nw.checked=showNonWorkBands;
   renderGantt();
 }
 
@@ -2511,11 +2737,14 @@ function updateStatus(fc){
   document.getElementById('sb-total').textContent= n ? `Total fees ${money2(fc.totalFee)}` : '–';
   const {start,end}=overallSpan();
   document.getElementById('sb-span').textContent = start ? `${fmtDisplay(start)} to ${fmtDisplay(end)}` : '–';
-  const noFee=headings.filter(h=>!feeCents(h)&&headingWorkdays(h).length).length;
+  const noFee=headings.filter(h=>!isHourly(h)&&!feeCents(h)&&headingWorkdays(h).length).length;
   const warn=[];
   if(fc.unallocated) warn.push(`${money2(fc.unallocated)} on headings with no working days`);
   if(n && noFee) warn.push(`${noFee} heading${noFee!==1?'s':''} without a total fee`);
   fc.imbalanced.forEach(r=>warn.push(`${r.h.name}: ${money2(Math.abs(r.a.imbalance))} of the fee has no period left to go in`));
+  (fc.budgetFlags||[]).forEach(r=>warn.push(r.a.budgetGap
+    ? `${r.h.name}: budget from resourcing is ${money2(Math.abs(r.a.budgetGap))} ${r.a.budgetGap>0?'short of':'over'} the fee`
+    : `${r.h.name}: budget from resourcing exceeds the fee, other periods negative`));
   fc.rows.forEach(r=>{ if(!r.a.imbalance && r.a.R<0) warn.push(`${r.h.name}: actual invoices exceed the fee`); });
   document.getElementById('sb-warn').textContent=warn.join(' · ');
   const hid=document.getElementById('sb-hidden');
@@ -2529,6 +2758,54 @@ function flashStatus(msg){
   el.textContent=msg; el.style.color='#93c5fd';
   clearTimeout(_flashT);
   _flashT=setTimeout(()=>{ el.style.color=''; if(currentForecast) updateStatus(currentForecast); },3500);
+}
+
+// ═══════════════════════════════════════════════════════
+//  HEADING MENU: fixed-fee or hourly rates
+//  Fixed-fee: the total fee is entered; Budget and Invoicing are spread over
+//  the working days; resourcing is a cost tracked against the budget.
+//  Hourly rates: Budget and the invoice forecast come from billable
+//  resourcing (hours x utilisation x rate); the total fee is the sum of all
+//  invoices and is shown, not entered. Saved per heading (forecast.basis).
+// ═══════════════════════════════════════════════════════
+function openHeadingMenu(e, i){
+  e.preventDefault(); hideTooltip(); if(typeof closeAllPopups==='function') closeAllPopups(); else closeCtx();
+  const h=headings[i], hr=isHourly(h);
+  document.getElementById('ctx-title').textContent=h.name||'Heading';
+  showMenu(e,[
+    `<div class="ctx-item${hr?'':' checked'}" onclick="closeCtx();setBasis(${i},'fixed')">${hr?'<span class="ctx-check"></span>':'<span class="ctx-check">✓</span>'}Fixed-fee</div>`,
+    `<div class="ctx-item${hr?' checked':''}" onclick="closeCtx();setBasis(${i},'hourly')">${hr?'<span class="ctx-check">✓</span>':'<span class="ctx-check"></span>'}Hourly rates</div>`,
+    `<div class="ctx-item info">${hr?'Invoices are forecast from billable resourcing (hours x utilisation x rate). The total fee is the sum of all invoices.':'The total fee is entered. Budget and invoicing are spread over the working days; resourcing is a cost to track against the budget.'}</div>`
+  ]);
+}
+async function setBasis(i, basis){
+  const h=headings[i]; if(!h || (h.basis||'fixed')===basis) return;
+  const name=basis==='hourly'?'hourly rates':'fixed-fee';
+  const C=allocateHeading(h).C;
+  const ok=await showChoice(`Change to ${name}?`,
+    `<p>You are about to change to ${basis==='hourly'?'an hourly rates':'a fixed-fee'} project.</p>
+     <p style="margin-top:8px"><strong>${escHtml(h.name)}</strong>: ${basis==='hourly'
+       ? `invoices will be forecast from the billable resourcing (hours x ${fmtNum(utilisation)}% utilisation x rate), and the total fee becomes the sum of all invoices. It can no longer be typed in.`
+       : `the current total of <strong>${money2(C)}</strong> becomes the fixed fee, which you can then edit. Budget and invoicing are spread over the working days, unless the resourcing shape is kept below, and resourcing becomes a cost to track against the budget.`}</p>
+     ${basis==='fixed' && billableDaily(h).size ? (()=>{ const bt=allocateHeading(h).budgetTotal||0, d=bt-C;
+       return `<label style="display:flex;gap:8px;align-items:flex-start;margin-top:10px;cursor:pointer"><input type="checkbox" id="cap-shape" checked style="margin-top:2px">
+       <span>Keep the resourcing shape for the budget: each ${unitName(breakdownView)} is captured from resourcing (striped on the Budget bar). Right-click a period later to change it.${Math.abs(d)>=100
+         ? `<br><span style="color:#b45309">The resourcing adds up to ${money2(bt)}, ${money2(Math.abs(d))} ${d>0?'more':'less'} than the ${money2(C)} total${(h.actuals||[]).length?' (actual invoices differ from the resourcing)':''}. The budget will be flagged until the fee or a period is adjusted.</span>` : ''}</span></label>`; })() : ''}
+     <p style="margin-top:8px" class="muted">Actual invoices and resourcing are kept either way. Undo changes it back.</p>`,
+    [{label:'Cancel',value:false},{label:`Change to ${name}`,value:true,primary:true}]);
+  if(!ok) return;
+  const cb=document.getElementById('cap-shape'), capture = basis==='fixed' && cb && cb.checked;
+  if(capture){
+    // Capture the hourly budget (billable resourcing) period by period
+    const daily=billableDaily(h), mode=breakdownView, per=new Map();
+    daily.forEach((v,d)=>{ const k=periodKey(d,mode); per.set(k,(per.get(k)||0)+v); });
+    h.budgetFrom=[...per].map(([k,c])=>{ const pb=periodBounds(k,mode); return {start:pb.start, end:pb.end, cents:Math.round(c), at:todayStr()}; })
+      .sort((x,y)=>x.start<y.start?-1:1);
+  }
+  if(basis==='fixed') h.fee=Math.max(0,C)/100;   // capture the hourly total as the fee
+  h.basis=basis;
+  refresh();
+  flashStatus(`${h.name} is now ${name}.${basis==='fixed'?` Fixed fee ${money2(Math.max(0,C))}.`:''}${capture?` Budget captured from resourcing for ${h.budgetFrom.length} ${unitName(breakdownView)}${h.budgetFrom.length!==1?'s':''}.`:''}`);
 }
 
 // ═══════════════════════════════════════════════════════
@@ -2614,7 +2891,11 @@ function drawResTotalsRow(r, i, spec, mode){
     const x0=Math.max(0,xForDate(b.start)), x1=Math.min(ganttTotalPx,xForDate(b.next));
     if(x1<=x0) return;
     const cell=document.createElement('div');
-    cell.className='res-total-cell';
+    // Over resourced: this period's resourcing cost is more than its budget
+    // (fixed-fee headings; on hourly rates the budget IS the resourcing)
+    const bud=(r.periods.get(key)||{cents:0}).cents;
+    const over=!r.a.hourly && c>bud;
+    cell.className='res-total-cell'+(over?' over':'');
     cell.dataset.key=key;
     cell.style.left=x0+'px'; cell.style.width=(x1-x0)+'px';
     cell.textContent = mode==='weekly' ? money0(c) : fitText(c,x1-x0,TOTAL_FONT_PX,TOTAL_WEIGHT);
@@ -2635,6 +2916,11 @@ function resTotalsTip(r,key,mode){
     html+=`<div class="tt-row"><span>${escHtml(resLabel(rc.res))}${p.actH?' <span style="opacity:.6">(actual)</span>':''}</span><span>${fmtHours(p.hours)} · ${money2(Math.round(p.cents))}</span></div>`;
   });
   html+=`<div class="tt-row" style="font-weight:700;margin-top:2px"><span>Total</span><span>${fmtHours(H)} · ${money2(Math.round(C))}</span></div></div>`;
+  if(!r.a.hourly){
+    const bud=(r.periods.get(key)||{cents:0}).cents, c=Math.round(C);
+    html+=`<div class="tt-row"><span>Budget for this ${unitName(mode)}</span><span>${money2(bud)}</span></div>`;
+    if(c>bud) html+=`<div style="color:#fca5a5">⚠ Over resourced by ${money2(c-bud)}</div>`;
+  }
   return html;
 }
 
@@ -3619,7 +3905,7 @@ let undoStack=[], redoStack=[], lastState=null, undoEnabled=true;
 function stateSignature(){
   const figs={};
   allHeadings().forEach(h=>{ const f=figuresOf(h); delete f.savedAt; figs[h.id]=f; });
-  return JSON.stringify({figs, order:headings.map(h=>h.id), hidden:hiddenHeadings.map(h=>h.id), billing, hpd:hoursPerDay});
+  return JSON.stringify({figs, order:headings.map(h=>h.id), hidden:hiddenHeadings.map(h=>h.id), billing, hpd:hoursPerDay, util:utilisation, title:projectTitle});
 }
 function recordState(){
   const sig=stateSignature();
@@ -3660,6 +3946,8 @@ function applyState(str){
   hiddenHeadings=hid.concat(rest.filter(h=>h.excluded));
   billing=sanitiseBilling(s.billing); _billCache.sig='';
   hoursPerDay=sanitiseHpd(s.hpd);
+  utilisation=s.util==null?UTIL_DEFAULT:sanitiseUtil(s.util);
+  applyProjectTitle(s.title||'');
   undoEnabled=false; refresh(); undoEnabled=true;
   updateUndoIndicator();
 }
@@ -3681,6 +3969,20 @@ function refresh(){
   applyRowHighlight();
   recordState();
   updateSaveMarker();
+}
+// ── Project title (top left): saved as projectTitle in the programme JSON,
+// shared with the Gantt tool. Also the default PDF title and file name.
+let projectTitle='', loadedTitle='';
+function applyProjectTitle(t){
+  projectTitle=String(t||'').replace(/\s+/g,' ').trim().slice(0,120);
+  const el=document.getElementById('project-title'); if(el && document.activeElement!==el) el.value=projectTitle;
+  document.title = projectTitle ? projectTitle+' · Forecast' : 'Fee Forecast';
+  const pt=document.getElementById('pdf-title'); if(pt) pt.value = projectTitle || 'Fee Forecast';
+}
+function setProjectTitle(v){
+  applyProjectTitle(v);
+  const el=document.getElementById('project-title'); if(el) el.value=projectTitle;
+  recordState(); updateSaveMarker();
 }
 function syncProjectStartDisplay(){
   document.getElementById('project-start-display').value = projectStartStr ? fmtDisplay(projectStartStr) : '';
@@ -3834,8 +4136,12 @@ function hpdFromList(list){
   const h=list.find(x=>x.fileHpd);
   return h ? sanitiseHpd(h.fileHpd) : HPD_DEFAULT;
 }
+function utilFromList(list){
+  const h=list.find(x=>x.fileUtil!=null);
+  return h ? sanitiseUtil(h.fileUtil) : UTIL_DEFAULT;
+}
 function figuresSig(){
-  const m={_billing:billing, _hpd:hoursPerDay};
+  const m={_billing:billing, _hpd:hoursPerDay, _util:utilisation, _title:projectTitle};
   allHeadings().forEach(h=>{ const p=forecastPayload(h); if(p) m[h.id]=p; });
   return JSON.stringify(Object.keys(m).sort().map(k=>[k,m[k]]));
 }
@@ -3935,11 +4241,11 @@ async function importProgramme(d, fileName, handle, stamp){
     const {pairs, removed}=matchHeadings(list, old);
     const fileBilling=billingFromList(list);
     const differ=[...pairs].filter(([nh,o])=>!figuresEqual(nh,o));
-    if((JSON.stringify(fileBilling)!==JSON.stringify(billing) || hpdFromList(list)!==hoursPerDay) && !differ.length) differ.push([null,null]);
+    if((JSON.stringify(fileBilling)!==JSON.stringify(billing) || hpdFromList(list)!==hoursPerDay || utilFromList(list)!==utilisation) && !differ.length) differ.push([null,null]);
     if(differ.length){
       const fileHas=list.some(h=>forecastPayload(h));
       source = await showChoice('Which figures?',
-        `<p>${differ[0][0]?`${differ.length} heading${differ.length!==1?'s have':' has'} different fees or actual invoices`:'The settings (billing period or hours per day) are different'} on screen from ${escHtml(fileName)}.</p>
+        `<p>${differ[0][0]?`${differ.length} heading${differ.length!==1?'s have':' has'} different fees or actual invoices`:'The settings (billing period, hours per day or utilisation) are different'} on screen from ${escHtml(fileName)}.</p>
          <p style="margin-top:8px"><strong>Keep figures on screen</strong> takes the programme dates from the file and keeps what you see now. Save JSON then writes them into the file.</p>
          <p style="margin-top:8px"><strong>Use figures in file</strong> loads the file as it is.</p>
          ${fileHas?'':'<p class="muted" style="margin-top:8px">The file has no forecast figures in it yet.</p>'}`,
@@ -3947,7 +4253,7 @@ async function importProgramme(d, fileName, handle, stamp){
       if(!source){ workdayOverrides=prevOverrides; return; }
     }
     if(source==='memory') pairs.forEach((o,nh)=>applyFigures(nh, figuresOf(o)));
-    else { billing=billingFromList(list); hoursPerDay=hpdFromList(list); }
+    else { billing=billingFromList(list); hoursPerDay=hpdFromList(list); utilisation=utilFromList(list); }
     let moved=0; const added=[];
     list.forEach(nh=>{ const o=pairs.get(nh); if(!o) added.push(nh.name||'(unnamed)'); else if(JSON.stringify(o.segments)!==JSON.stringify(nh.segments)) moved++; });
     summary=`<p>${pairs.size} heading${pairs.size!==1?'s':''} matched${moved?`, ${moved} with new dates (budget and forecast re-spread; actual invoices stay where they are)`:', no date changes'}.</p>`;
@@ -3957,9 +4263,9 @@ async function importProgramme(d, fileName, handle, stamp){
     // Fresh start: view settings follow the programme
     if(d.pxPerDay){ pxPerDay=d.pxPerDay; document.getElementById('zoom-val').value=pxPerDay; }
     showNonWorkBands=!!d.showNonWorkBands;
-    document.getElementById('nonwork-btn').classList.toggle('active',showNonWorkBands);
+    document.getElementById('set-nonwork').checked=showNonWorkBands;
     durationMode = d.durationMode==='weeks' ? 'weeks' : 'days';
-    billing=billingFromList(list); hoursPerDay=hpdFromList(list);
+    billing=billingFromList(list); hoursPerDay=hpdFromList(list); utilisation=utilFromList(list);
     const withFig=list.filter(h=>h.fee||h.actuals.length).length;
     summary = withFig
       ? `<p>${list.length} heading${list.length!==1?'s':''} loaded, ${withFig} with fees or actual invoices saved in the file.</p>`
@@ -3979,12 +4285,12 @@ async function importProgramme(d, fileName, handle, stamp){
 }
 
 function figuresSigOf(doc){
-  const prev=workdayOverrides, prevB=billing, prevH=hoursPerDay;
+  const prev=workdayOverrides, prevB=billing, prevH=hoursPerDay, prevU=utilisation;
   const {list}=headingsFromGantt(doc);
-  billing=billingFromList(list); hoursPerDay=hpdFromList(list);
-  const m={_billing:billing, _hpd:hoursPerDay};
+  billing=billingFromList(list); hoursPerDay=hpdFromList(list); utilisation=utilFromList(list);
+  const m={_billing:billing, _hpd:hoursPerDay, _util:utilisation, _title:typeof doc.projectTitle==='string'?doc.projectTitle:''};
   list.forEach(h=>{ const p=forecastPayload(h); if(p) m[h.id]=p; });
-  workdayOverrides=prev; billing=prevB; hoursPerDay=prevH;
+  workdayOverrides=prev; billing=prevB; hoursPerDay=prevH; utilisation=prevU;
   return JSON.stringify(Object.keys(m).sort().map(k=>[k,m[k]]));
 }
 
@@ -3995,6 +4301,12 @@ function adoptProgramme(d, list, fileName, handle, stamp){
   const sameFile = programmeSource && programmeSource===(fileName||'');
   programmeSource=fileName||'';
   projectStartStr=d.projectStart||'';
+  // Title: a fresh file sets it; re-reading the same file takes a title
+  // changed in the Gantt tool unless it was also changed here
+  const ft=typeof d.projectTitle==='string'?d.projectTitle:'';
+  if(!sameFile) applyProjectTitle(ft);
+  else if(ft!==loadedTitle && projectTitle===loadedTitle) applyProjectTitle(ft);
+  loadedTitle=ft;
   setHeadingLists(list);
   syncProjectStartDisplay();
   // Re-reading the same file (programme changed in the Gantt tool) keeps the
@@ -4027,7 +4339,7 @@ async function checkLinkedFile(force){
     // what it loaded, so its copy can be stale: keep the screen.
     const keepScreen = isDirty() || fileFigs===savedFiguresSig || progChanged;
     if(keepScreen) pairs.forEach((o,nh)=>applyFigures(nh, figuresOf(o)));
-    else { billing=billingFromList(list); hoursPerDay=hpdFromList(list); }
+    else { billing=billingFromList(list); hoursPerDay=hpdFromList(list); utilisation=utilFromList(list); }
     let moved=0; pairs.forEach((o,nh)=>{ if(JSON.stringify(o.segments)!==JSON.stringify(nh.segments)) moved++; });
     const added=list.length-pairs.size;
     const prevSaved=savedFiguresSig;
@@ -4139,6 +4451,7 @@ async function saveBlob(blob, suggestedName, description, mime, ext){
 // `forecast` property of heading tasks is touched.
 function buildDoc(base){
   const doc=JSON.parse(JSON.stringify(base));
+  if(projectTitle) doc.projectTitle=projectTitle; else delete doc.projectTitle;
   const byId=new Map(allHeadings().map(h=>[h.id,h]));
   const stamp=new Date().toISOString();
   (doc.tasks||[]).forEach(t=>{
@@ -4202,6 +4515,7 @@ async function exportJSON(){
 }
 function afterSave(doc){
   programmeDoc=doc;
+  loadedTitle=projectTitle;
   const stamp=(doc.tasks||[]).find(t=>t&&t.forecast&&t.forecast.savedAt);
   if(stamp) allHeadings().forEach(h=>h.savedAt=stamp.forecast.savedAt);
   savedFiguresSig=figuresSig();
@@ -4360,6 +4674,14 @@ function openSettings(){
   document.getElementById('set-day').value=billing.last?'':billing.day;
   document.getElementById('set-last').checked=billing.last;
   document.getElementById('set-hpd').value=hoursPerDay;
+  document.getElementById('set-util').value=utilisation;
+  document.getElementById('set-nonwork').checked=showNonWorkBands;
+  const anyHourly=allHeadings().some(isHourly);
+  document.getElementById('set-util').disabled=!anyHourly;
+  document.getElementById('set-util-wrap').classList.toggle('off',!anyHourly);
+  document.getElementById('set-util-help').textContent = anyHourly
+    ? 'The share of resourced hours that is billed on hourly-rates headings. At 80%, a 100 hour week bills 80 hours. Resourcing costs still count every hour.'
+    : 'Only used on hourly-rates headings (right-click a heading to change it). All headings are fixed-fee, so this has no effect.';
   document.getElementById('settings-modal').style.display='flex';
   onSettingsInput();
 }
@@ -4407,15 +4729,20 @@ function applySettings(){
   if(!(hv>0 && hv<=24)){ document.getElementById('set-hpd').classList.add('invalid'); return; }
   document.getElementById('set-hpd').classList.remove('invalid');
   const hpd=sanitiseHpd(hv);
+  const uEl=document.getElementById('set-util'), uv=uEl.value.trim()===''?utilisation:+uEl.value;
+  if(!uEl.disabled && !(uv>=0 && uv<=100)){ uEl.classList.add('invalid'); return; }
+  uEl.classList.remove('invalid');
+  const util=uEl.disabled?utilisation:sanitiseUtil(uv);
   closeSettings();
-  const billChanged=JSON.stringify(b)!==JSON.stringify(billing), hpdChanged=hpd!==hoursPerDay;
-  if(!billChanged && !hpdChanged) return;
+  const billChanged=JSON.stringify(b)!==JSON.stringify(billing), hpdChanged=hpd!==hoursPerDay, utilChanged=util!==utilisation;
+  if(!billChanged && !hpdChanged && !utilChanged) return;
   if(billChanged){ billing=b; _billCache.sig=''; if(breakdownPref!=='billing') breakdownPref='billing'; }
-  hoursPerDay=hpd;
+  hoursPerDay=hpd; utilisation=util;
   refresh();
   const msg=[];
   if(billChanged) msg.push(`Billing period: ${billingFreqName().toLowerCase()}, invoiced on ${billingDayText()}.`);
   if(hpdChanged) msg.push(`Hours per day: ${fmtNum(hoursPerDay)}. Time entered in days follows it.`);
+  if(utilChanged) msg.push(`Utilisation: ${fmtNum(utilisation)}% of hours billed on hourly-rates headings.`);
   flashStatus(msg.join(' '));
 }
 
