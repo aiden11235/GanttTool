@@ -360,9 +360,9 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
 #hrs-popup input.hp-native{position:absolute;right:0;bottom:0;width:1px;height:1px;opacity:0;pointer-events:none;border:none;padding:0}
 #hrs-popup{width:330px}
 .res-ghost.low{top:22px;bottom:3px;height:auto;display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--accent)}
-.res-act-box{cursor:grab}
-.res-act-box.dragging{opacity:.75;z-index:20;cursor:grabbing}
-.res-act-box .res-h{width:4px;background:transparent}
+.inv-box{cursor:grab}
+.inv-box.dragging{opacity:.75;z-index:20;cursor:grabbing}
+.inv-box .res-h{width:4px;background:transparent}
 .res-act-box .res-h:hover{background:rgba(0,0,0,.08)}
 #hrs-popup .hp-units{display:flex;border:1px solid #c8c4bc;border-radius:4px;overflow:hidden;flex:none}
 #hrs-popup .hp-units button{border:none;background:#fff;color:var(--text-muted);font-size:11px;font-family:var(--font);padding:6px 8px;cursor:pointer}
@@ -1003,7 +1003,7 @@ function cleanLabel(v){ return String(v==null?'':v).replace(/\s+/g,' ').trim().r
 function sanitiseActuals(list){
   return (Array.isArray(list)?list:[])
     .filter(a=>a&&/^\d{4}-\d\d-\d\d$/.test(a.start)&&/^\d{4}-\d\d-\d\d$/.test(a.end)&&isFinite(+a.cents))
-    .map(a=>{ const o={start:a.start, end:a.end, cents:Math.round(+a.cents), mode:['monthly','billing'].includes(a.mode)?a.mode:'weekly'};
+    .map(a=>{ const o={start:a.start, end:a.end, cents:Math.round(+a.cents), mode:['monthly','billing','custom'].includes(a.mode)?a.mode:'weekly'};
                const l=cleanLabel(a.label); if(l) o.label=l; return o; })
     .sort((x,y)=>x.start<y.start?-1:x.start>y.start?1:0);
 }
@@ -2090,11 +2090,12 @@ function totalTip(fc,p,cents,kind){
 
 function attachTip(el, htmlFn){
   el.addEventListener('mouseenter', e=>{
+    if(typeof snapDragging!=='undefined' && snapDragging) return;
     const tip=document.getElementById('tooltip');
     tip.innerHTML=htmlFn(); tip.style.display='block'; moveTooltip(e);
   });
-  el.addEventListener('mousemove', moveTooltip);
-  el.addEventListener('mouseleave', hideTooltip);
+  el.addEventListener('mousemove', e=>{ if(!snapDragging) moveTooltip(e); });
+  el.addEventListener('mouseleave', ()=>{ if(!snapDragging) hideTooltip(); });
 }
 function moveTooltip(e){
   const tip=document.getElementById('tooltip');
@@ -2368,14 +2369,21 @@ function drawActualTags(row, r, map, mode){
     const pick=opts.find(([t,px])=>textWidth(t,px,W)<=room);
     box.textContent=pick?pick[0]:'';
     if(pick && pick[1]!==9) box.style.fontSize=pick[1]+'px';
-    box.addEventListener('click',e=>{ e.stopPropagation(); openInvoiceEntry(e,r,ai); });
+    const hl=document.createElement('div'); hl.className='res-h res-hl'; hl.title='Drag to change the start';
+    const hr=document.createElement('div'); hr.className='res-h res-hr'; hr.title='Drag to change the end';
+    box.appendChild(hl); box.appendChild(hr);
+    const idx=headings.indexOf(h);
+    hl.addEventListener('mousedown',e=>startInvDrag(e,idx,ai,'l',box));
+    hr.addEventListener('mousedown',e=>startInvDrag(e,idx,ai,'r',box));
+    box.addEventListener('mousedown',e=>{ if(!e.target.classList.contains('res-h')) startInvDrag(e,idx,ai,'move',box); });
+    box.addEventListener('click',e=>e.stopPropagation());   // the click opens the invoice on release (startInvDrag)
     box.addEventListener('contextmenu',e=>{ e.preventDefault(); e.stopPropagation(); openInvoiceMenu(e,r,ai,row); });
     attachTip(box,()=>{
       const k=periodKey(actualLumpDate(a),mode);
       return `<strong>${escHtml(h.name)}</strong><br>${escHtml(a.label||'Actual invoice')} <strong>${money2(a.cents)}</strong>`
         +`<br>For ${fmtDisplay(a.start)} to ${fmtDisplay(a.end)}`
         +`<br>Dated ${fmtDisplay(actualLumpDate(a))}, counted in ${escHtml(periodName(k,mode,true))}`
-        +`<br><span style="opacity:.6;font-style:italic">Click to change, right-click for options</span>`;
+        +`<br><span style="opacity:.6;font-style:italic">Click to change, drag to move, drag the ends to stretch (snaps to weeks; Shift for days, Ctrl for periods), right-click for options</span>`;
     });
     row.appendChild(box);
   });
@@ -3001,7 +3009,7 @@ function drawResourceRow(r, i, spec, mode){
         +`<br>For ${fmtDisplay(a.start)} to ${fmtDisplay(a.end)}`
         +`<br>${money2(Math.round(H*res.rate*100))} at ${money2(Math.round(res.rate*100))}/hr`
         +`<br><span style="opacity:.75">Planned for these dates: ${fmtHours(plan)} (replaced)</span>`
-        +`<br><span style="opacity:.6;font-style:italic">Click to change, drag to move, drag the ends to stretch, right-click for options</span>`;
+        +`<br><span style="opacity:.6;font-style:italic">Click to change, drag to move, drag the ends to stretch (snaps to weeks; Shift for days, Ctrl for periods), right-click for options</span>`;
     });
     row.appendChild(box);
   });
@@ -3060,7 +3068,7 @@ function resBarTip(h, rc, b){
   else html+=`<br><span style="opacity:.7">No hourly rate entered</span>`;
   const cov=[]; eachDay(b.start,b.end,d=>{ if(rc.covered.has(d)&&isWorkday(d)) cov.push(d); });
   if(cov.length) html+=`<br><span style="opacity:.75">${cov.length} working day${cov.length!==1?'s are':' is'} covered by actual hours, which replace the plan there</span>`;
-  return html+`<br><span style="opacity:.6;font-style:italic">Drag to move, drag the ends to stretch, click to change the time, right-click to split</span>`;
+  return html+`<br><span style="opacity:.6;font-style:italic">Drag to move, drag the ends to stretch (snaps to weeks; Shift for days, Ctrl for periods), click to change the time, right-click to split</span>`;
 }
 
 // Hover: a dashed box in the top band shows where a click adds a bar; in
@@ -3103,20 +3111,14 @@ function startResDraw(e, i, k, row){
   if(gap.inside) return;
   resDrawing=true;
   const ghost=document.createElement('div'); ghost.className='res-ghost'; row.appendChild(ghost);
-  let s=anchor, en=anchor, moved=false;
+  let s=anchor, en=anchor;
   const clamp=(a,z)=>{ if(gap.after&&a<gap.after) a=gap.after; if(gap.before&&z>gap.before) z=gap.before; return [a,z]; };
   const paint=()=>{ ghost.style.left=xForDate(s)+'px'; ghost.style.width=Math.max(4,xForDate(en)+pxPerDay-xForDate(s))+'px'; };
-  const onMove=me=>{
-    const x=me.clientX-rect.left;
-    if(!moved && Math.abs(x-x0)<4) return;
-    moved=true;
-    const d=dateAtX(Math.max(0,x));
-    [s,en]=clamp(d<anchor?d:anchor, d<anchor?anchor:d);
-    paint();
-    showTipAt(me, `${fmtDisplay(s)} to ${fmtDisplay(en)}<br>${workdaysInRange(parseDate(s),parseDate(en))} working days`);
-  };
-  const onUp=me=>{
-    document.removeEventListener('mousemove',onMove); document.removeEventListener('mouseup',onUp);
+  snapDrag(e, (dx,u,ev)=>{
+    const d=dateAtX(Math.max(0,ev.clientX-rect.left));
+    [s,en]=clamp(...snapCover(anchor,d,u));
+    paint(); dragTip(ev, s, en);
+  }, (moved, me)=>{
     resDrawing=false; hideTooltip();
     if(!moved){
       // A click: the whole week or billing period, within the free gap
@@ -3126,8 +3128,7 @@ function startResDraw(e, i, k, row){
     if(s>en){ ghost.remove(); return; }
     paint();
     newBarPopup(me, i, k, s, en, {el:ghost});
-  };
-  document.addEventListener('mousemove',onMove); document.addEventListener('mouseup',onUp);
+  }, 4);
 }
 // Bars in one row run in series: a range may not overlap another bar
 function barOverlap(res, s, e, skip){
@@ -3151,42 +3152,127 @@ function barHint(res,s,en,v){
     +' Part weeks and public holidays are pro rata.';
 }
 
-// ── Moving and stretching a bar (whole days; never over a neighbour)
+// ── Snapping for dragged bars and boxes
+// Bars and boxes snap to whole weeks (Monday to Sunday) as they are moved or
+// stretched. Hold Shift for single days. Hold Ctrl for the period the chart
+// is showing (weeks, or billing periods: fortnightly, monthly, quarterly).
+// The keys can be pressed or let go mid-drag.
+function snapUnit(e){ return e.shiftKey ? 'day' : (e.ctrlKey||e.metaKey) ? breakdownView : 'weekly'; }
+function snapName(u){
+  if(u==='day') return 'days';
+  if(u==='billing') return `${billing.freq} billing periods`;
+  return 'weeks';
+}
+function snapHint(u){
+  let t=`Snapping to ${snapName(u)}.`;
+  if(u==='day') t+=' Let go of Shift to snap.';
+  else{
+    t+=' Shift for days.';
+    if(u==='weekly' && breakdownView==='billing') t+=` Ctrl for ${snapName('billing')}.`;
+  }
+  return `<span style="opacity:.6">${t}</span>`;
+}
+// Day edges are counted from the chart's first day: edge n sits between day
+// n-1 and day n, so a range covers edges [start, end+1).
+function edgeOf(d){ return daysBetween(fmt(ganttMinD), d); }
+function dateOfEdge(n){ return fmt(addDay(ganttMinD, n)); }
+// The period boundary nearest a (fractional) edge position
+function snapEdge(pos, u){
+  if(u==='day') return Math.round(pos);
+  const b=periodBounds(periodKey(dateOfEdge(Math.floor(pos)),u),u);
+  const a=edgeOf(b.start), z=edgeOf(b.next);
+  return pos-a <= z-pos ? a : z;
+}
+function periodOfEdge(n, u){ const b=periodBounds(periodKey(dateOfEdge(n),u),u); return [edgeOf(b.start), edgeOf(b.next)]; }
+// New dates for a range dragged by dx pixels. mode: 'move' | 'l' | 'r'.
+function snapRange(s0, e0, mode, dx, u){
+  const L=edgeOf(s0), R=edgeOf(e0)+1, f=dx/pxPerDay;
+  let l=L, r=R;
+  if(u==='day'){
+    const d=Math.round(f);
+    if(mode==='move'){ l=L+d; r=R+d; }
+    else if(mode==='l') l=Math.min(L+d, R-1);
+    else r=Math.max(R+d, L+1);
+  } else if(mode==='move'){
+    l=snapEdge(L+f,u); r=snapEdge(R+f,u);
+    if(r<=l) r=periodOfEdge(l,u)[1];
+  } else if(mode==='l'){
+    l=snapEdge(L+f,u); if(l>=R) l=periodOfEdge(R-1,u)[0];
+  } else {
+    r=snapEdge(R+f,u); if(r<=L) r=periodOfEdge(L,u)[1];
+  }
+  return [dateOfEdge(l), dateOfEdge(r-1)];
+}
+// A new range drawn from one day to another: whole periods covering both
+function snapCover(a, b, u){
+  let s=a<b?a:b, e=a<b?b:a;
+  if(u==='day') return [s,e];
+  return [periodBounds(periodKey(s,u),u).start, periodBounds(periodKey(e,u),u).end];
+}
+// Runs a drag: apply(dx, unit, event) on every move and when Shift or Ctrl
+// changes; finish(moved, event) on release. A drag swallows the click that
+// follows it, so letting go over a row does not open an entry popup.
+let snapDragging=false;   // hover tips stay quiet while a drag shows its own
+function snapDrag(e, apply, finish, threshold){
+  const sx=e.clientX; let moved=false, last=e;
+  const run=ev=>{
+    const dx=ev.clientX-sx;
+    if(!moved && Math.abs(dx)<(threshold||3)) return;
+    moved=true; snapDragging=true; apply(dx, snapUnit(ev), ev);
+  };
+  const onMove=me=>{ last=me; run(me); };
+  const onKey=ke=>{
+    if(ke.key!=='Shift' && ke.key!=='Control' && ke.key!=='Meta') return;
+    if(moved) run({clientX:last.clientX, clientY:last.clientY, pageX:last.pageX, pageY:last.pageY, shiftKey:ke.shiftKey, ctrlKey:ke.ctrlKey, metaKey:ke.metaKey});
+  };
+  const onUp=me=>{
+    document.removeEventListener('mousemove',onMove); document.removeEventListener('mouseup',onUp);
+    document.removeEventListener('keydown',onKey); document.removeEventListener('keyup',onKey);
+    snapDragging=false;
+    if(moved){
+      const eat=ce=>{ ce.stopPropagation(); ce.preventDefault(); };
+      document.addEventListener('click',eat,true);
+      setTimeout(()=>document.removeEventListener('click',eat,true),0);
+    }
+    finish(moved, me);
+  };
+  document.addEventListener('mousemove',onMove); document.addEventListener('mouseup',onUp);
+  document.addEventListener('keydown',onKey); document.addEventListener('keyup',onKey);
+}
+function dragTip(ev, s, en, extra){
+  showTipAt(ev, `${fmtDisplay(s)} to ${fmtDisplay(en)}<br>${workdaysInRange(parseDate(s),parseDate(en))} working days`
+    +(extra||'')+'<br>'+snapHint(snapUnit(ev)));
+}
+
+// ── Moving and stretching a bar (snapped; never over a neighbour)
 function startResBarDrag(e, i, k, bi, mode, barEl){
   if(e.button!==0) return;
   e.preventDefault(); e.stopPropagation(); hideTooltip(); closeAllPopups();
   const res=headings[i].resources[k], b=res.bars[bi];
   let prevEnd=null, nextStart=null;
   res.bars.forEach((o,oi)=>{ if(oi===bi) return; if(o.end<b.start&&(!prevEnd||o.end>prevEnd)) prevEnd=o.end; if(o.start>b.end&&(!nextStart||o.start<nextStart)) nextStart=o.start; });
-  const sx=e.clientX; let moved=false, ns=b.start, ne=b.end;
+  let ns=b.start, ne=b.end;
   const add=(d,n)=>fmt(addDay(d,n));
-  const onMove=me=>{
-    const dx=me.clientX-sx;
-    if(!moved && Math.abs(dx)<3) return;
-    moved=true; barEl.classList.add('dragging');
-    let d=Math.round(dx/pxPerDay);
+  snapDrag(e, (dx,u,ev)=>{
+    barEl.classList.add('dragging');
+    [ns,ne]=snapRange(b.start,b.end,mode,dx,u);
     if(mode==='move'){
-      if(prevEnd && add(b.start,d)<=prevEnd) d=daysBetween(b.start,prevEnd)+1;
-      if(nextStart && add(b.end,d)>=nextStart) d=daysBetween(b.end,nextStart)-1;
-      ns=add(b.start,d); ne=add(b.end,d);
-    } else if(mode==='l'){
-      ns=add(b.start,d); if(ns>b.end) ns=b.end; if(prevEnd&&ns<=prevEnd) ns=add(prevEnd,1); ne=b.end;
-    } else {
-      ne=add(b.end,d); if(ne<b.start) ne=b.start; if(nextStart&&ne>=nextStart) ne=add(nextStart,-1); ns=b.start;
-    }
+      // Slide back clear of a neighbour; trim if the gap is too small
+      if(prevEnd && ns<=prevEnd){ const sh=daysBetween(ns,add(prevEnd,1)); ns=add(ns,sh); ne=add(ne,sh); }
+      if(nextStart && ne>=nextStart){ const sh=daysBetween(ne,add(nextStart,-1)); ns=add(ns,sh); ne=add(ne,sh); }
+      if(prevEnd && ns<=prevEnd) ns=add(prevEnd,1);
+    } else if(mode==='l'){ if(prevEnd&&ns<=prevEnd) ns=add(prevEnd,1); }
+    else { if(nextStart&&ne>=nextStart) ne=add(nextStart,-1); }
     barEl.style.left=xForDate(ns)+'px'; barEl.style.width=Math.max(6,xForDate(ne)+pxPerDay-xForDate(ns))+'px';
-    showTipAt(me, `${fmtDisplay(ns)} to ${fmtDisplay(ne)}<br>${workdaysInRange(parseDate(ns),parseDate(ne))} working days`);
-  };
-  const onUp=me=>{
-    document.removeEventListener('mousemove',onMove); document.removeEventListener('mouseup',onUp);
+    dragTip(ev, ns, ne);
+  }, (moved, me)=>{
     hideTooltip();
     if(!moved){ if(mode==='move') editResBar(me,i,k,bi); return; }
     if(ns===b.start && ne===b.end){ refresh(); return; }
     b.start=ns; b.end=ne;
     res.bars.sort((x,y)=>x.start<y.start?-1:1);
     refresh();
-  };
-  document.addEventListener('mousemove',onMove); document.addEventListener('mouseup',onUp);
+  });
 }
 function showTipAt(e, html){
   const tip=document.getElementById('tooltip');
@@ -3281,35 +3367,49 @@ function resActualPopup(e, i, k, t, ai, name){
     onRemove: ai===null?null:()=>{ res.actuals.splice(ai,1); refresh(); }});
 }
 
-// ── Moving and stretching an actual-time box (whole days; overlaps allowed,
+// ── Moving and stretching an actual-time box (snapped; overlaps allowed,
 // as two timesheet entries can cover the same dates)
 function startResActDrag(e, i, k, ai, mode, el){
   if(e.button!==0) return;
   e.preventDefault(); e.stopPropagation(); hideTooltip(); closeAllPopups();
   const res=headings[i].resources[k], a=res.actuals[ai];
-  const sx=e.clientX; let moved=false, ns=a.start, ne=a.end;
-  const add=(d,n)=>fmt(addDay(d,n));
-  const onMove=me=>{
-    const dx=me.clientX-sx;
-    if(!moved && Math.abs(dx)<3) return;
-    moved=true; el.classList.add('dragging');
-    const d=Math.round(dx/pxPerDay);
-    if(mode==='move'){ ns=add(a.start,d); ne=add(a.end,d); }
-    else if(mode==='l'){ ns=add(a.start,d); if(ns>a.end) ns=a.end; ne=a.end; }
-    else { ne=add(a.end,d); if(ne<a.start) ne=a.start; ns=a.start; }
+  let ns=a.start, ne=a.end;
+  snapDrag(e, (dx,u,ev)=>{
+    el.classList.add('dragging');
+    [ns,ne]=snapRange(a.start,a.end,mode,dx,u);
     el.style.left=(xForDate(ns)+1)+'px'; el.style.width=Math.max(6,xForDate(ne)+pxPerDay-xForDate(ns)-2)+'px';
-    showTipAt(me, `${fmtDisplay(ns)} to ${fmtDisplay(ne)}<br>${workdaysInRange(parseDate(ns),parseDate(ne))} working days`);
-  };
-  const onUp=me=>{
-    document.removeEventListener('mousemove',onMove); document.removeEventListener('mouseup',onUp);
+    dragTip(ev, ns, ne);
+  }, (moved, me)=>{
     hideTooltip();
     if(!moved){ if(mode==='move') openResActualEdit(me,i,k,ai); return; }
     if(ns===a.start && ne===a.end){ refresh(); return; }
     a.start=ns; a.end=ne; a.mode=rangeMode(ns,ne);
     res.actuals.sort((x,y)=>x.start<y.start?-1:x.start>y.start?1:0);
     refresh();
-  };
-  document.addEventListener('mousemove',onMove); document.addEventListener('mouseup',onUp);
+  });
+}
+
+// ── Moving and stretching an actual invoice box (snapped; overlaps allowed).
+// The amount counts on the last working day of the new range.
+function startInvDrag(e, idx, ai, mode, el){
+  if(e.button!==0) return;
+  e.preventDefault(); e.stopPropagation(); hideTooltip(); closeAllPopups(); closeCtx(); closeOverridePopup();
+  const h=headings[idx], a=h.actuals[ai];
+  let ns=a.start, ne=a.end;
+  snapDrag(e, (dx,u,ev)=>{
+    el.classList.add('dragging');
+    [ns,ne]=snapRange(a.start,a.end,mode,dx,u);
+    el.style.left=(xForDate(ns)+1)+'px'; el.style.width=Math.max(6,xForDate(ne)+pxPerDay-xForDate(ns)-2)+'px';
+    const lump=actualLumpDate({start:ns,end:ne});
+    dragTip(ev, ns, ne, `<br>Dated ${fmtDisplay(lump)}, counted in ${escHtml(periodName(periodKey(lump,breakdownView),breakdownView,true))}`);
+  }, (moved, me)=>{
+    hideTooltip();
+    if(!moved){ if(mode==='move') openInvoiceEntry(me, {h}, ai); return; }
+    if(ns===a.start && ne===a.end){ refresh(); return; }
+    a.start=ns; a.end=ne; a.mode=rangeMode(ns,ne);
+    h.actuals.sort((x,y)=>x.start<y.start?-1:x.start>y.start?1:0);
+    refresh();
+  });
 }
 
 // ── Hours popup (bars and actual hours)
