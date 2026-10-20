@@ -79,7 +79,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
 .lt-warn{color:#b45309;font-size:10px}
 .lt-right{margin-left:auto;font-family:var(--font-mono);font-size:10px;color:var(--text-muted);padding-left:8px}
 .lt-split{padding:0 2px!important}
-.left-totals.tall{height:30px}
+.left-totals.tall{height:44px}
 .lt-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text)}
 /* Fee column header: TOTAL FEE over the to date | remaining sub-labels */
 .lh-fee{flex-direction:column;align-items:stretch;justify-content:flex-end}
@@ -123,10 +123,11 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
 .split .fig-b{color:var(--text-muted)}
 .one-fig{width:100%;text-align:right;padding-right:5px;font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden}
 .neg{color:#dc2626!important}
-/* Budget row is taller to fit its two figures */
-.task-row.tall{height:37px}
-.gantt-row.tall{height:37px}
+/* Budget row is taller to fit its three figures */
+.task-row.tall{height:44px}
+.gantt-row.tall{height:44px}
 .gantt-row.tall .gantt-bar,.gantt-row.tall .fee-label{top:11px}
+.gantt-row.tall:not(.inv-row) .gantt-bar,.gantt-row.tall:not(.inv-row) .fee-label{top:14px}
 .sub-title{font-family:var(--font);font-size:12px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:6px;width:100%}
 .sub-info{font-family:var(--font-mono);font-size:11px;color:var(--text-muted);padding-left:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%}
 /* Read-only heading name: same type as the Gantt heading input */
@@ -183,7 +184,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
 
 /* Totals row: the week-by-week (or month-by-month) sum across every
    heading. Sits directly under the date rows. */
-.gantt-totals-row.tall{height:30px}
+.gantt-totals-row.tall{height:44px}
 .gantt-totals-row{position:relative;height:20px;border-top:1px solid var(--border-strong);background:var(--totals-bg)}
 .total-cell{position:absolute;top:0;height:100%;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:10px;font-weight:700;color:var(--text);border-right:1px solid var(--border-strong);white-space:nowrap;overflow:hidden}
 .total-cell.is-zero{color:var(--text-faint);font-weight:400}
@@ -1686,8 +1687,8 @@ const SUB_NAMES = {m:'Milestones', b:'Budget', i:'Invoicing', a:'Actual invoices
 // Rows that overlap in time go on separate lanes, so concurrent entries
 // stack instead of covering each other. Lanes depend only on the dates.
 const ACT_LANE_H=15, ACT_LANE_GAP=3;
-// The Budget row is taller: its fee cell holds two figures, to date over remaining.
-const BUDGET_ROW_H=37;
+// The Budget row is taller: its fee cell holds three figures, total over to date over remaining.
+const BUDGET_ROW_H=44;
 const ADD_ROW_H=24;
 // The Resourcing plan row holds three figures: total over to date over remaining
 const RES_HEAD_H=46;
@@ -1814,14 +1815,16 @@ function renderLeft() {
         if(!isHourly(h) && r.a.budgetGap) badge+=`<span class="sub-badge warn" title="Every working day is in a period captured from resourcing, so the budget is ${money2(Math.abs(r.a.budgetGap))} ${r.a.budgetGap>0?'short of':'over'} the total fee">⚠</span>`;
         else if(!isHourly(h) && r.a.budgetNeg) badge+=`<span class="sub-badge warn" title="Periods captured from resourcing add up to more than the total fee, so the other periods go negative (${money2(r.a.Rb)} between them)">⚠</span>`;
         if(!isHourly(h) && nCap) badge+=`<span class="sub-badge muted" title="${nCap} budget period${nCap!==1?'s':''} captured from resourcing (striped on the bar). Right-click a period on the Budget bar to change.">◧ ${nCap}</span>`;
-        if(hasFigures) fee=splitCell(r.budgetToDate, r.budgetRemaining,
+        if(hasFigures) fee=splitCell3(r.budgetToDate+r.budgetRemaining, r.budgetToDate, r.budgetRemaining,
+          'Total budget: to date plus remaining',
           `Budget to date: the share of the total fee for working days before today (${todayTxt})`,
           `Budget remaining: the share for working days from today on`);
       } else if(kind==='i'){
         info = nDays ? `${nDays} working day${nDays!==1?'s':''}` : '';
         if(r.a.imbalance) badge+=`<span class="sub-badge warn" title="Every working day is in an invoiced period, so the rest of the fee has nowhere to go">⚠</span>`;
         else if(r.a.R<0) badge+=`<span class="sub-badge warn" title="Actual invoices add up to more than the total fee">⚠</span>`;
-        if(hasFigures) fee=splitCell(r.actToDate, r.remTotal,
+        if(hasFigures) fee=splitCell3(r.actToDate+r.remTotal, r.actToDate, r.remTotal,
+          'Total invoicing: invoiced to date plus still to invoice (the total fee)',
           'Invoiced to date: the total of all actual invoices entered',
           'Remaining: still to be invoiced (total fee less actual invoices)');
       } else if(kind==='r'){
@@ -1859,17 +1862,17 @@ function renderLeftTotals(fc){
       <div class="lt-cell"></div>`;
   };
   strip('left-totals-b',
-    `<span class="lt-label">Total fee</span><span class="lt-mode" style="font-family:var(--font-mono)">${money2(fc.totalFee)}</span><span class="lt-mode">· ${modeTxt}</span>`
+    `<span class="lt-label">Totals</span><span class="lt-mode">${modeTxt}</span>`
       +(fc.unallocated?`<span class="lt-warn" style="margin-left:8px" title="Fees on headings with no working days are not in the chart">⚠ ${money2(fc.unallocated)} not spread</span>`:''),
-    'Budget', splitCell(fc.budgetToDate,fc.budgetRemaining,'Budget to date, all headings','Budget remaining, all headings'));
+    'Budget', splitCell3(fc.budgetToDate+fc.budgetRemaining,fc.budgetToDate,fc.budgetRemaining,'Total budget, all headings','Budget to date, all headings','Budget remaining, all headings'));
   const bad=fc.imbalanced.length;
   strip('left-totals-i',
     bad?`<span class="lt-warn">⚠ ${bad} heading${bad!==1?'s':''} cannot balance to the fee</span>`:'',
-    'Invoicing', splitCell(fc.actToDate,fc.remTotal,'Invoiced to date, all headings','Still to be invoiced, all headings'));
+    'Invoicing', splitCell3(fc.actToDate+fc.remTotal,fc.actToDate,fc.remTotal,'Total invoicing, all headings (the total fees)','Invoiced to date, all headings','Still to be invoiced, all headings'));
   // Resourcing cost strip, then one strip per person, matching the chart rows
   const hasRes=fc.rows.some(r=>r.res.length), cs=document.getElementById('left-totals-c');
   cs.style.display=hasRes?'':'none';
-  if(hasRes) strip('left-totals-c','','Resourcing', splitCell(fc.resToDate,fc.resRemaining,'Resourcing cost to date, all headings: actual time, plus planned time before today where none is entered','Resourcing cost remaining, all headings: planned time from today on'));
+  if(hasRes) strip('left-totals-c','','Resourcing', splitCell3(fc.resToDate+fc.resRemaining,fc.resToDate,fc.resRemaining,'Total resourcing cost, all headings','Resourcing cost to date, all headings: actual time, plus planned time before today where none is entered','Resourcing cost remaining, all headings: planned time from today on'));
   const host=document.getElementById('left-totals-r');
   host.innerHTML=fc.people.map((pp,n)=>`<div class="left-totals res-sum${n===0?' first':''}">${blank}
       <div class="lt-cell"><span class="res-sum-name" title="${escHtml(resLabel(pp.res))}">${escHtml(resLabel(pp.res))}</span>${pp.over.size?`<span class="over-badge" title="Weeks where this person is assigned more time than the week's working days">⚠ ${pp.over.size} week${pp.over.size!==1?'s':''} over</span>`:''}</div>
