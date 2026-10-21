@@ -144,6 +144,12 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
 
 /* Fee entry. Shows $0.00 at rest, a plain number while editing. */
 .fee-cell{padding:0 2px!important}
+.hfee{flex-direction:column;align-items:stretch!important;justify-content:center}
+.hfee-line{display:flex;align-items:center;min-width:0}
+.hfee:has(.hfee-profit) .fee-input{line-height:13px}
+.hfee-profit{justify-content:space-between;height:12px;margin-bottom:1px}
+.hprofit{font-family:var(--font-mono);font-size:10px;font-weight:600;color:var(--text-muted);padding-right:5px;white-space:nowrap}
+.hprofit.neg{color:#dc2626}
 .fee-cap{font-style:normal;font-size:9px;color:var(--text-faint);white-space:nowrap;padding-left:3px;flex-shrink:0}
 .fee-input{border:none;background:transparent;font-family:var(--font-mono);font-size:11px;font-weight:600;line-height:28px;width:100%;outline:none;text-align:right;padding:0 5px 0 2px;min-width:0;vertical-align:middle;border-radius:2px}
 .fee-input:hover{background:rgba(255,255,255,.55)}
@@ -1764,6 +1770,9 @@ function renderLeft() {
     const {start,end}=headingSpan(h);
     const nDays=r.days, C=r.cents;
     const unalloc = C && !nDays && !(h.actuals||[]).length;
+    // Projected profit: total invoicing less total resourcing cost, for this heading
+    const invT=r.actToDate+r.remTotal, resT=Math.round(r.resToDate+r.resRemaining), profit=invT-resT;
+    const showProfit = !!(invT || resT);
 
     // ── HEADING ROW ──
     const row=document.createElement('div');
@@ -1783,7 +1792,7 @@ function renderLeft() {
         <div class="heading-name" title="${escHtml(h.name)}">${escHtml(h.name)||'<span style="opacity:.5">(unnamed heading)</span>'}</div>
       </div>
       <div class="task-cell">${(()=>{ const ms=h.milestones||[], nM=ms.filter(m=>m.major).length; return ms.length?`<span class="ms-count" title="Milestones from the programme, shown on the heading bar">◆ ${ms.length} milestone${ms.length!==1?'s':''}${nM?` · ${nM} major`:''}</span>`:''; })()}</div>
-      <div class="task-cell fee-cell">${isHourly(h)
+      <div class="task-cell fee-cell hfee"><div class="hfee-line">${isHourly(h)
         ? `<i class="fee-cap" title="Hourly rates heading">Hourly</i>
         <input class="fee-input derived" type="text" readonly tabindex="-1" data-idx="${i}" value="${money2(C)}" style="color:${h.color}"
           title="Hourly rates: the total of all invoices, actual plus forecast. The forecast is the billable resourcing (hours x utilisation x rate). Right-click the heading to change to fixed-fee and enter a fee.">`
@@ -1791,7 +1800,8 @@ function renderLeft() {
         <input class="fee-input${unalloc?' unallocated':''}" type="text" inputmode="decimal" autocomplete="off" spellcheck="false"
           data-idx="${i}" value="${C?money2(C):''}" placeholder="$0.00" style="color:${h.color}"
           title="${unalloc?'This heading has no working days in the programme, so its fee cannot be spread.':'Total fee for this stage (fixed-fee). Accepts 12345.50, $12,345.50, 120k or 1.2m. Enter to apply, Escape to cancel.'}"
-          onfocus="feeFocus(this)" onblur="feeBlur(event,this)" onkeydown="feeKey(event,this)">`}
+          onfocus="feeFocus(this)" onblur="feeBlur(event,this)" onkeydown="feeKey(event,this)">`}</div>
+        ${showProfit?`<div class="hfee-line hfee-profit" title="Projected profit: total invoicing (${money2(invT)}) less resourcing cost (${money2(resT)})"><i class="fee-cap">Projected profit</i><span class="hprofit${profit<0?' neg':''}">${money2(profit)}</span></div>`:''}
       </div>
       <div class="task-cell comments-cell"><div class="comments-text" title="${escHtml(h.comments)}">${escHtml(h.comments)}</div></div>
     `;
@@ -3064,12 +3074,17 @@ function plannedHours(res, start, end){
   res.bars.forEach(b=>{ const a=b.start>start?b.start:start, z=b.end<end?b.end:end; if(a<=z) eachDay(a,z,d=>{ if(isWorkday(d)) n+=barHpw(b)/5; }); });
   return n;
 }
+// Calendar weeks in a range, to 1 decimal place ("6 weeks", "5.4 weeks")
+function weeksText(s,e){
+  const w=Math.round((daysBetween(s,e)+1)/7*10)/10;
+  return `${String(w)} week${w!==1?'s':''}`;
+}
 function resBarTip(h, rc, b){
   const res=rc.res, wd=workdaysInRange(parseDate(b.start),parseDate(b.end));
   const plan=barHpw(b)/5*wd;
   const per = b.dpw!=null ? `${fmtNum(b.dpw)} days per week (${fmtHours(barHpw(b))} at ${fmtNum(hoursPerDay)} h/day)` : `${fmtNum(b.hpw)} hours per week`;
   let html=`<strong>${escHtml(resLabel(res,'(unnamed resource)'))}</strong><br>${per}<br>${fmtDisplay(b.start)} to ${fmtDisplay(b.end)}`
-    +`<br>${wd} working day${wd!==1?'s':''} · ${fmtHours(plan)} planned`;
+    +`<br>${weeksText(b.start,b.end)} · ${wd} working day${wd!==1?'s':''} · ${fmtHours(plan)} planned`;
   if(res.rate) html+=`<br>${money2(Math.round(plan*res.rate*100))} at ${money2(Math.round(res.rate*100))}/hr`;
   else html+=`<br><span style="opacity:.7">No hourly rate entered</span>`;
   const cov=[]; eachDay(b.start,b.end,d=>{ if(rc.covered.has(d)&&isWorkday(d)) cov.push(d); });
@@ -3246,7 +3261,7 @@ function snapDrag(e, apply, finish, threshold){
   document.addEventListener('keydown',onKey); document.addEventListener('keyup',onKey);
 }
 function dragTip(ev, s, en, extra){
-  showTipAt(ev, `${fmtDisplay(s)} to ${fmtDisplay(en)}<br>${workdaysInRange(parseDate(s),parseDate(en))} working days`
+  showTipAt(ev, `${fmtDisplay(s)} to ${fmtDisplay(en)}<br>${weeksText(s,en)} · ${workdaysInRange(parseDate(s),parseDate(en))} working days`
     +(extra||'')+'<br>'+snapHint(snapUnit(ev)));
 }
 
