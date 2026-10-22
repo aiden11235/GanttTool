@@ -459,7 +459,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
   <button id="redo-btn" class="tb-btn tb-btn-ghost" onclick="redo()" style="opacity:0.35;font-size:13px;padding:4px 10px" title="Nothing to redo">↪ Redo</button>
   <button class="tb-btn tb-btn-ghost" onclick="reloadJSON()" title="Read the programme JSON again now, to pick up changes just saved in the Gantt tool. Your fees and invoices on screen are kept.">↻ Reload JSON</button>
   <button id="save-btn" class="tb-btn tb-btn-ghost" onclick="exportJSON()" title="Save the fees and actual invoices back into the programme JSON, the same file the Gantt tool uses">Save JSON</button>
-  <button class="tb-btn tb-btn-ghost" onclick="exportCSV()" style="border-color:#10b981;color:#10b981" title="Spreadsheet of the forecast, one column per week or month as shown on screen">Export CSV</button>
+  <button class="tb-btn tb-btn-ghost" onclick="exportExcel()" style="border-color:#10b981;color:#10b981" title="Excel workbook: financials and resourcing for the project, then for each heading. Money by week or billing period as shown on screen; resourcing in days per week.">Export Excel</button>
   <button class="tb-btn tb-btn-ghost" onclick="openScheduleExport()" style="border-color:#a78bfa;color:#a78bfa" title="Written summary of future resourcing, days per week per person, ready to copy into an email">Export DT</button>
   <button class="tb-btn tb-btn-ghost" onclick="openPDFModal()" style="border-color:#f59e0b;color:#f59e0b">⬇ PDF</button>
   <button class="tb-btn tb-btn-ghost" onclick="openImageModal()" style="border-color:#0ea5e9;color:#0ea5e9">🖼 Image</button>
@@ -1742,7 +1742,7 @@ function rowsHeight(){ return Math.max(contentHeight(),200); }
 //  Columns: x | handle | colour | heading (name, then From..to and working
 //  days on the rows beneath) | row title | total fee | comments
 // ═══════════════════════════════════════════════════════
-let currentForecast = null;   // last build, shared by left panel, chart, CSV and menus
+let currentForecast = null;   // last build, shared by left panel, chart, Excel export and menus
 
 // Two figures stacked in one cell, each with a small caption
 function splitCell(a, b, tipA, tipB, capA='to date', capB='remaining'){
@@ -4548,7 +4548,7 @@ function loadLegacyForecast(d, fileName){
 }
 
 // ═══════════════════════════════════════════════════════
-//  SAVE JSON / EXPORT CSV
+//  SAVE JSON / EXPORT EXCEL
 // ═══════════════════════════════════════════════════════
 function exportBaseName(){
   return (document.getElementById('pdf-title')?.value||'forecast')
@@ -4645,56 +4645,249 @@ function afterSave(doc){
 }
 window.addEventListener('beforeunload', e=>{ if(isDirty()){ e.preventDefault(); e.returnValue=''; } });
 
-// Three rows per heading (Budget, Invoiced, Actual), one column per week or
-// month (whichever is on screen), then the three totals rows. Plain
-// numbers so a spreadsheet can sum them.
-async function exportCSV(){
-  const fc=currentForecast||resolveBreakdown();
-  const mode=fc.mode;
-  const keys=new Set();
-  fc.rows.forEach(r=>{ [r.periods,r.inv,r.act,r.resPeriods].forEach(m=>m.forEach((p,k)=>{ if(p.cents||p.hours||(p.act&&p.act.size)) keys.add(k); })); });
-  const sorted=[...keys].sort();
-  const all=[];
-  if(sorted.length){
-    let k=sorted[0];
-    for(let g=0; g<2000; g++){ all.push(k); if(k===sorted[sorted.length-1]) break; k=nextKey(k,mode); }
-  }
-  const field=v=>{ const s=String(v==null?'':v); return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; };
-  const num=c=>(c/100).toFixed(2);
-  const label=k=>mode==='billing'?`Invoice ${fmtDisplay(k)}`:`Wk ${weekNumberOf(k)??''} ${fmtDisplay(k)}`.trim();
-  const head=['Heading','Row','Start','End','Working days','Total fee','To date / invoiced','Remaining'].concat(all.map(label)).concat(['Actual invoices / hours']);
-  const lines=[head.map(field).join(',')];
-  const cells=(m)=>all.map(k=>{ const p=m.get(k); return p&&(p.cents||(p.act&&p.act.size))?num(p.cents):''; });
-  fc.rows.forEach(r=>{
-    const sp=headingSpan(r.h);
-    const base=(row)=>[r.h.name, row, sp.start?fmtDisplay(sp.start):'', sp.end?fmtDisplay(sp.end):'', r.days, num(r.cents)];
-    lines.push(base('Budget').concat([num(r.budgetToDate),num(r.budgetRemaining)]).concat(cells(r.periods)).map(field).join(','));
-    lines.push(base('Invoicing (remaining)').concat(['',num(r.remTotal)]).concat(all.map(k=>{ const p=r.inv.get(k); return p&&p.freeCents?num(p.freeCents):''; })).map(field).join(','));
-    lines.push(base('Invoicing (invoiced)').concat([num(r.actToDate),'']).concat(cells(r.act))
-      .concat([(r.h.actuals||[]).map(a=>`${a.label?a.label+' ':''}${fmtDisplay(a.start)}-${fmtDisplay(a.end)} ${num(a.cents)}`).join('; ')]).map(field).join(','));
-    // Resourcing: cost per period (hours x rate), then each resource
-    const costCells=m=>all.map(k=>{ const p=m.get(k); return p&&(p.cents||p.hours)?num(Math.round(p.cents)):''; });
-    if(r.res.length){
-      lines.push(base('Resourcing').concat([num(r.resToDate),num(r.resRemaining)]).concat(costCells(r.resPeriods)).map(field).join(','));
-      r.res.forEach(rc=>{
-        const x=rc.res;
-        lines.push([r.h.name, `Resource: ${resLabel(x)} @ ${num(Math.round(x.rate*100))}/hr`, '', '', '', '', num(rc.toDate), num(rc.remaining)]
-          .concat(costCells(rc.periods))
-          .concat([x.actuals.map(a=>`${fmtDisplay(a.start)}-${fmtDisplay(a.end)} ${a.days!=null?fmtNum(a.days)+' d':fmtNum(a.hours)+' h'}`).join('; ')]).map(field).join(','));
-      });
+// ═══════════════════════════════════════════════════════
+//  EXCEL EXPORT: one formatted sheet in three sections
+//    FINANCIALS        profit, then Budget / Invoicing / Resourcing with
+//                      total, to date and remaining, then one column per
+//                      week or billing period (as on screen)
+//    RESOURCING        each person's days per week, all headings
+//    DETAILED BREAKDOWN  the same two tables for each heading
+//  The .xlsx is written here (no library): a small style table, inline
+//  strings and a stored (uncompressed) zip.
+// ═══════════════════════════════════════════════════════
+const XL={
+  colName(n){ let s=''; n++; while(n){ const m=(n-1)%26; s=String.fromCharCode(65+m)+s; n=Math.floor((n-1)/26); } return s; },
+  esc(s){ return String(s).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g,'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); },
+  argb(hex){ hex=String(hex||'').replace('#',''); if(hex.length===3) hex=hex.split('').map(c=>c+c).join(''); return 'FF'+hex.toUpperCase(); }
+};
+// Styles are registered on use: {b,i,size,color,fill,fmt,h:'left'|'right'|'center',border:'all'|'bottom'|'top',indent,wrap}
+function xlStyles(){
+  const fonts=['<font><sz val="10"/><name val="Calibri"/></font>'], fills=['<fill><patternFill patternType="none"/></fill>','<fill><patternFill patternType="gray125"/></fill>'];
+  const borders=['<border><left/><right/><top/><bottom/><diagonal/></border>'], fmts=[], xfs=['<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'];
+  const idx=(list,x)=>{ let i=list.indexOf(x); if(i<0){ i=list.length; list.push(x); } return i; };
+  const cache=new Map();
+  const BC='<color rgb="FFCBD5E1"/>';
+  return {
+    get(s){
+      if(!s) return 0;
+      const key=JSON.stringify(s); if(cache.has(key)) return cache.get(key);
+      const font=`<font>${s.b?'<b/>':''}${s.i?'<i/>':''}<sz val="${s.size||10}"/>${s.color?`<color rgb="${XL.argb(s.color)}"/>`:''}<name val="Calibri"/></font>`;
+      const fill=s.fill?`<fill><patternFill patternType="solid"><fgColor rgb="${XL.argb(s.fill)}"/><bgColor indexed="64"/></patternFill></fill>`:null;
+      const side=n=>`<${n} style="thin">${BC}</${n}>`;
+      const bd=s.border==='all'?`<border>${side('left')}${side('right')}${side('top')}${side('bottom')}<diagonal/></border>`
+              :s.border==='bottom'?`<border><left/><right/><top/>${side('bottom')}<diagonal/></border>`
+              :s.border==='top'?`<border><left/><right/>${side('top')}<bottom/><diagonal/></border>`
+              :s.border==='box'?`<border><left style="thin"><color rgb="FF475569"/></left><right style="thin"><color rgb="FF475569"/></right><top style="thin"><color rgb="FF475569"/></top><bottom style="thin"><color rgb="FF475569"/></bottom><diagonal/></border>`:null;
+      let numId=0;
+      if(s.fmt){ let i=fmts.indexOf(s.fmt); if(i<0){ i=fmts.length; fmts.push(s.fmt); } numId=164+i; }
+      const fontId=idx(fonts,font), fillId=fill?idx(fills,fill):0, borderId=bd?idx(borders,bd):0;
+      const al=(s.h||s.indent||s.wrap)?`<alignment${s.h?` horizontal="${s.h}"`:''}${s.indent?` indent="${s.indent}"`:''}${s.wrap?' wrapText="1"':''} vertical="center"/>`:'<alignment vertical="center"/>';
+      const xf=`<xf numFmtId="${numId}" fontId="${fontId}" fillId="${fillId}" borderId="${borderId}" xfId="0" applyFont="1"${fill?' applyFill="1"':''}${bd?' applyBorder="1"':''}${numId?' applyNumberFormat="1"':''} applyAlignment="1">${al}</xf>`;
+      const id=idx(xfs,xf); cache.set(key,id); return id;
+    },
+    xml(){
+      return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">`
+        +(fmts.length?`<numFmts count="${fmts.length}">${fmts.map((f,i)=>`<numFmt numFmtId="${164+i}" formatCode="${XL.esc(f)}"/>`).join('')}</numFmts>`:'')
+        +`<fonts count="${fonts.length}">${fonts.join('')}</fonts><fills count="${fills.length}">${fills.join('')}</fills>`
+        +`<borders count="${borders.length}">${borders.join('')}</borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>`
+        +`<cellXfs count="${xfs.length}">${xfs.join('')}</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
     }
+  };
+}
+// A sheet being filled row by row. set(r,c,value,style); numbers stay numbers.
+function xlSheet(styles){
+  const rows=new Map(), merges=[], heights=new Map();
+  return {
+    set(r,c,v,s){ if(!rows.has(r)) rows.set(r,new Map()); rows.get(r).set(c,{v,s:styles.get(s)}); },
+    merge(r1,c1,r2,c2){ merges.push(`${XL.colName(c1)}${r1+1}:${XL.colName(c2)}${r2+1}`); },
+    height(r,h){ heights.set(r,h); },
+    xml(cols, freeze){
+      const body=[...rows.keys()].sort((a,b)=>a-b).map(r=>{
+        const cells=[...rows.get(r).entries()].sort((a,b)=>a[0]-b[0]).map(([c,{v,s}])=>{
+          const ref=XL.colName(c)+(r+1), st=s?` s="${s}"`:'';
+          if(v===null||v===undefined||v==='') return `<c r="${ref}"${st}/>`;
+          if(typeof v==='number') return isFinite(v)?`<c r="${ref}"${st}><v>${v}</v></c>`:`<c r="${ref}"${st}/>`;
+          return `<c r="${ref}"${st} t="inlineStr"><is><t xml:space="preserve">${XL.esc(v)}</t></is></c>`;
+        }).join('');
+        const ht=heights.get(r);
+        return `<row r="${r+1}"${ht?` ht="${ht}" customHeight="1"`:''}>${cells}</row>`;
+      }).join('');
+      // Columns only: the names and the three figures stay put while the periods scroll
+      const pane=freeze?`<pane xSplit="${freeze.c}" topLeftCell="${XL.colName(freeze.c)}1" activePane="topRight" state="frozen"/><selection pane="topRight"/>`:'';
+      return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">`
+        +`<sheetViews><sheetView workbookViewId="0" showGridLines="0" zoomScale="90">${pane}</sheetView></sheetViews><sheetFormatPr defaultRowHeight="15"/>`
+        +`<cols>${cols.map((w,i)=>`<col min="${i+1}" max="${i+1}" width="${w}" customWidth="1"/>`).join('')}</cols>`
+        +`<sheetData>${body}</sheetData>`
+        +(merges.length?`<mergeCells count="${merges.length}">${merges.map(m=>`<mergeCell ref="${m}"/>`).join('')}</mergeCells>`:'')
+        +`<pageMargins left="0.4" right="0.4" top="0.5" bottom="0.5" header="0.3" footer="0.3"/><pageSetup paperSize="8" orientation="landscape" fitToHeight="0"/></worksheet>`;
+    }
+  };
+}
+// Stored zip (no compression) with CRC-32
+function zipStore(files){
+  const enc=new TextEncoder(), T=zipStore.t||(zipStore.t=(()=>{ const t=new Uint32Array(256); for(let n=0;n<256;n++){ let c=n; for(let k=0;k<8;k++) c=c&1?0xEDB88320^(c>>>1):c>>>1; t[n]=c>>>0; } return t; })());
+  const crc=b=>{ let c=0xFFFFFFFF; for(let i=0;i<b.length;i++) c=T[(c^b[i])&255]^(c>>>8); return (c^0xFFFFFFFF)>>>0; };
+  const d=new Date(), time=(d.getHours()<<11)|(d.getMinutes()<<5)|(d.getSeconds()>>1), date=((d.getFullYear()-1980)<<9)|((d.getMonth()+1)<<5)|d.getDate();
+  const parts=[], central=[]; let off=0;
+  files.forEach(f=>{
+    const name=enc.encode(f.name), data=typeof f.data==='string'?enc.encode(f.data):f.data, c=crc(data);
+    const h=new DataView(new ArrayBuffer(30));
+    h.setUint32(0,0x04034b50,true); h.setUint16(4,20,true); h.setUint16(6,0x0800,true); h.setUint16(8,0,true);
+    h.setUint16(10,time,true); h.setUint16(12,date,true); h.setUint32(14,c,true); h.setUint32(18,data.length,true); h.setUint32(22,data.length,true);
+    h.setUint16(26,name.length,true); h.setUint16(28,0,true);
+    parts.push(new Uint8Array(h.buffer),name,data);
+    const ch=new DataView(new ArrayBuffer(46));
+    ch.setUint32(0,0x02014b50,true); ch.setUint16(4,20,true); ch.setUint16(6,20,true); ch.setUint16(8,0x0800,true); ch.setUint16(10,0,true);
+    ch.setUint16(12,time,true); ch.setUint16(14,date,true); ch.setUint32(16,c,true); ch.setUint32(20,data.length,true); ch.setUint32(24,data.length,true);
+    ch.setUint16(28,name.length,true); ch.setUint32(42,off,true);
+    central.push(new Uint8Array(ch.buffer),name);
+    off+=30+name.length+data.length;
   });
-  const tot=(row,a,b,m)=>lines.push(['Total',row,'','','',num(fc.totalFee),a==null?'':num(a),b==null?'':num(b)].concat(all.map(k=>num(m.get(k)||0))).map(field).join(','));
-  tot('Budget',fc.budgetToDate,fc.budgetRemaining,fc.totals);
-  tot('Invoicing (remaining)',null,fc.remTotal,fc.remTotals);
-  tot('Invoicing (invoiced)',fc.actToDate,null,fc.actTotals);
-  if(fc.rows.some(r=>r.res.length)){
-    const rt=new Map(); fc.resTotals.forEach((c,k)=>rt.set(k,Math.round(c)));
-    tot('Resourcing',fc.resToDate,fc.resRemaining,rt);
-  }
-  const blob=new Blob([lines.join('\r\n')],{type:'text/csv'});
-  if(await saveBlob(blob, exportBaseName()+'-'+mode+'-'+fmt(new Date())+'.csv','CSV spreadsheet','text/csv','.csv'))
-    flashStatus('✓ CSV saved ('+mode+')');
+  const csize=central.reduce((s,b)=>s+b.length,0);
+  const end=new DataView(new ArrayBuffer(22));
+  end.setUint32(0,0x06054b50,true); end.setUint16(8,files.length,true); end.setUint16(10,files.length,true);
+  end.setUint32(12,csize,true); end.setUint32(16,off,true);
+  return new Blob([...parts,...central,new Uint8Array(end.buffer)],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+}
+function xlsxBlob(sheetName, sheetXml, stylesXml){
+  const ct=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>`;
+  const rels=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`;
+  const wb=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="${XL.esc(sheetName.slice(0,31).replace(/[\\\/?*\[\]:]/g,' '))}" sheetId="1" r:id="rId1"/></sheets></workbook>`;
+  const wbr=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`;
+  return zipStore([{name:'[Content_Types].xml',data:ct},{name:'_rels/.rels',data:rels},{name:'xl/workbook.xml',data:wb},
+    {name:'xl/_rels/workbook.xml.rels',data:wbr},{name:'xl/worksheets/sheet1.xml',data:sheetXml},{name:'xl/styles.xml',data:stylesXml}]);
+}
+
+// Every period key from the first to the last that has a value
+function keySpan(maps, mode){
+  const keys=new Set();
+  maps.forEach(m=>m.forEach((v,k)=>{ const x=typeof v==='number'?v:(v.cents||v.hours||0); if(Math.abs(x)>1e-9) keys.add(k); }));
+  const sorted=[...keys].sort(), all=[];
+  if(!sorted.length) return all;
+  let k=sorted[0];
+  for(let g=0; g<3000; g++){ all.push(k); if(k===sorted[sorted.length-1]) break; k=nextKey(k,mode); }
+  return all;
+}
+function buildWorkbook(){
+  const fc=resolveBreakdown(), mode=fc.mode, today=todayStr();
+  const S=xlStyles(), sh=xlSheet(S);
+  const INK='#1E293B', MUTED='#64748B', FAINT='#94A3B8', HEAD='#E2E8F0', SOFT='#F1F5F9';
+  const $2='"$"#,##0.00;[Red]-"$"#,##0.00', $0='"$"#,##0;[Red]-"$"#,##0', D1='0.0;[Red]-0.0';
+  const C0=5;   // first period column (A-D table, E gap)
+  const money=c=>Math.round(c)/100;
+  // Period columns for the money tables (as on screen) and weeks for resourcing
+  const finMaps=[fc.totals,fc.remTotals,fc.actTotals,fc.resTotals];
+  const wkHours=new Map(); fc.rows.forEach(r=>r.res.forEach(rc=>resourceCalc(rc.res,'weekly',today).periods.forEach((p,k)=>{ if(p.hours) wkHours.set(k,1); })));
+  // In the weekly view both tables share one run of weeks, so a date sits in the same column
+  const fin=keySpan(mode==='weekly'?finMaps.concat([wkHours]):finMaps,mode);
+  const weeks=mode==='weekly'?fin:keySpan([wkHours],'weekly');
+  const nCols=C0+Math.max(fin.length,weeks.length,1);
+  const isPast=(k,m)=>periodBounds(k,m).end<today;
+  const perLabel=(k,m)=>m==='billing'?['Invoice',fmtDisplay(k)]:[(()=>{ const n=weekNumberOf(k); return n!=null?`Wk ${n}`:'Week'; })(),fmtDisplay(k)];
+  let R=0;
+  const section=(title,sub)=>{
+    R++;
+    for(let c=0;c<nCols;c++) sh.set(R,c,c===0?title:'',{b:true,size:12,color:'#FFFFFF',fill:INK});
+    sh.height(R,22);
+    if(sub){ R++; sh.set(R,0,sub,{i:true,color:MUTED}); }
+    R+=2;
+  };
+  const subTitle=(text,color)=>{
+    for(let c=0;c<nCols;c++) sh.set(R,c,c===0?text:'',{b:true,size:11,color:INK,fill:color?lightenHex(color,0.25):SOFT,border:'bottom'});
+    sh.height(R,19); R++;
+  };
+  const periodHeads=(keys,m,first,leftHeads)=>{
+    leftHeads.forEach((t,c)=>{ sh.set(R,c,'',{fill:HEAD}); sh.set(R+1,c,t,{b:true,fill:HEAD,h:(c===0||t==='Position')?'left':'right',border:'bottom'}); });
+    sh.set(R,4,''); sh.set(R+1,4,'');
+    keys.forEach((k,j)=>{
+      const [a,b]=perLabel(k,m), past=isPast(k,m);
+      sh.set(R,first+j,a,{color:past?FAINT:MUTED,fill:past?SOFT:HEAD,h:'center'});
+      sh.set(R+1,first+j,b,{b:!past,color:past?FAINT:INK,fill:past?SOFT:HEAD,h:'center',border:'bottom'});
+    });
+    R+=2;
+  };
+  // Money table: profit, then three categories with their three figures and periods
+  const moneyTable=(t)=>{
+    periodHeads(fin,mode,C0,['','Total','To date','Remaining']);
+    sh.set(R,0,'Total projected profit',{b:true}); sh.set(R,1,money(t.profit),{b:true,fmt:$2,color:t.profit<0?'#DC2626':INK});
+    sh.set(R,2,'',{}); sh.set(R,3,'',{}); R++;
+    sh.set(R,0,'Total invoicing less total resourcing cost',{i:true,color:FAINT,size:9}); R++;
+    t.cats.forEach(([name,tot,td,rem,per,box],n)=>{
+      const top=n===0?'top':null;
+      sh.set(R,0,name,{b:true,border:top});
+      sh.set(R,1,money(tot),{b:true,fmt:$2,border:top}); sh.set(R,2,money(td),{color:MUTED,fmt:$2,border:top}); sh.set(R,3,money(rem),{color:MUTED,fmt:$2,border:top});
+      fin.forEach((k,j)=>{
+        const v=per(k), past=isPast(k,mode), boxed=box&&box(k);
+        sh.set(R,C0+j,v?money(v):'',{fmt:$0,h:'right',color:past?MUTED:INK,fill:past?SOFT:null,border:boxed?'box':top});
+      });
+      R++;
+    });
+    R++;
+  };
+  // Days table: one row per person, weeks across, a total row
+  const daysTable=(people, heads)=>{
+    if(!people.length){ sh.set(R,0,'No resourcing entered.',{i:true,color:MUTED}); R+=2; return; }
+    periodHeads(weeks,'weekly',C0,heads);
+    const colTot=new Map();
+    people.forEach(p=>{
+      sh.set(R,0,p.name,{b:true,border:'bottom'}); sh.set(R,1,p.position||'',{color:MUTED,border:'bottom'});
+      sh.set(R,2,p.rate?p.rate:'',{color:MUTED,fmt:$2,border:'bottom'});
+      sh.set(R,3,Math.round(p.total/hoursPerDay*100)/100,{b:true,fmt:D1,border:'bottom'});
+      weeks.forEach((k,j)=>{
+        const h=p.weeks.get(k)||0, over=p.over&&p.over.has(k), past=isPast(k,'weekly');
+        colTot.set(k,(colTot.get(k)||0)+h);
+        sh.set(R,C0+j,h>1e-9?Math.round(h/hoursPerDay*100)/100:'',{fmt:D1,h:'right',border:'bottom',color:over?'#DC2626':past?MUTED:INK,b:!!over,fill:over?'#FEE2E2':past?SOFT:null});
+      });
+      R++;
+    });
+    const all=people.reduce((s,p)=>s+p.total,0);
+    sh.set(R,0,'Total days',{b:true,fill:HEAD}); sh.set(R,1,'',{fill:HEAD}); sh.set(R,2,'',{fill:HEAD}); sh.set(R,3,Math.round(all/hoursPerDay*100)/100,{b:true,fmt:D1,fill:HEAD});
+    weeks.forEach((k,j)=>{ const h=colTot.get(k)||0; sh.set(R,C0+j,h>1e-9?Math.round(h/hoursPerDay*100)/100:'',{b:true,fmt:D1,h:'right',fill:HEAD}); });
+    R+=2;
+  };
+  const peopleOf=pps=>pps.map(pp=>({name:pp.res.name||pp.res.position||'(unnamed)', position:pp.res.name?pp.res.position:'', rate:null, total:pp.total, weeks:pp.weeks, over:pp.over}));
+  const view=mode==='billing'?`billing period (${billingShort()})`:'week';
+  // ── Title
+  sh.set(R,0,projectTitle||'Fee forecast',{b:true,size:16,color:INK}); sh.height(R,26); R++;
+  sh.set(R,0,`Exported ${fmtDisplay(today)} · money by ${view}, resourcing by week · to date means before ${fmtDisplay(today)} (shaded columns)`,{i:true,color:MUTED}); R++;
+  // ── 1. FINANCIALS
+  section('FINANCIALS', 'All headings. Invoicing per period is the actual invoices plus the forecast still to invoice; boxed cells hold an actual invoice.');
+  const totInv=fc.actToDate+fc.remTotal, totRes=Math.round(fc.resToDate+fc.resRemaining);
+  moneyTable({profit:totInv-totRes, cats:[
+    ['Budget', fc.budgetToDate+fc.budgetRemaining, fc.budgetToDate, fc.budgetRemaining, k=>fc.totals.get(k)||0],
+    ['Invoicing', totInv, fc.actToDate, fc.remTotal, k=>(fc.actTotals.get(k)||0)+(fc.remTotals.get(k)||0), k=>(fc.actTotals.get(k)||0)!==0],
+    ['Resourcing', totRes, fc.resToDate, fc.resRemaining, k=>Math.round(fc.resTotals.get(k)||0)]]});
+  // ── 2. RESOURCING
+  const ex=excludedPeople();
+  section('RESOURCING', `Days per week (${fmtNum(hoursPerDay)} hours a day), all headings. Red: more time than the week's working days.`+(ex.size?' People excluded from the schedule are left out.':''));
+  daysTable(peopleOf(fc.people), ['Name','Position','','Total days']);
+  // ── 3. DETAILED BREAKDOWN
+  section('DETAILED BREAKDOWN', 'Each heading: its figures, then its resources (days per week).');
+  fc.rows.forEach(r=>{
+    const h=r.h, sp=headingSpan(h);
+    const inv=r.actToDate+r.remTotal, res=Math.round(r.resToDate+r.resRemaining);
+    subTitle(`${h.name||'(unnamed heading)'}`, h.color);
+    sh.set(R,0,[sp.start?`${fmtDisplay(sp.start)} to ${fmtDisplay(sp.end)}`:'No dated work', `${r.days} working days`, isHourly(h)?'Hourly rates':'Fixed fee', `Total fee ${money2(r.cents)}`].join(' · '),{i:true,color:MUTED}); R+=2;
+    if(!inv && !res && !(r.budgetToDate+r.budgetRemaining)){ sh.set(R,0,'No fee, invoices or resourcing entered.',{i:true,color:MUTED}); R+=2; return; }
+    moneyTable({profit:inv-res, cats:[
+      ['Budget', r.budgetToDate+r.budgetRemaining, r.budgetToDate, r.budgetRemaining, k=>(r.periods.get(k)||{cents:0}).cents],
+      ['Invoicing', inv, r.actToDate, r.remTotal, k=>{ const a=(r.act.get(k)||{cents:0}).cents, p=r.inv.get(k); return a+(p?p.freeCents:0); }, k=>!!(r.act.get(k)&&r.act.get(k).cents)],
+      ['Resourcing', res, r.resToDate, r.resRemaining, k=>Math.round((r.resPeriods.get(k)||{cents:0}).cents)]]});
+    const ppl=r.res.map(rc=>{
+      const w=new Map(); let tot=0;
+      resourceCalc(rc.res,'weekly',today).periods.forEach((p,k)=>{ if(p.hours){ w.set(k,p.hours); tot+=p.hours; } });
+      return {name:(rc.res.name||rc.res.position||'(unnamed)')+(rc.res.schedule===false?' (not in schedule)':''), position:rc.res.name?rc.res.position:'', rate:+rc.res.rate||0, total:tot, weeks:w};
+    }).filter(p=>p.total>0);
+    if(r.res.length) daysTable(ppl, ['Resource','Position','Rate ($/hr)','Total days']);
+  });
+  const cols=[38,15,15,15,2].concat(Array(Math.max(0,nCols-C0)).fill(11));
+  return xlsxBlob('Forecast', sh.xml(cols,{c:5}), S.xml());
+}
+async function exportExcel(){
+  const blob=buildWorkbook();
+  const name=exportBaseName()+'-forecast-'+fmt(new Date())+'.xlsx';
+  if(await saveBlob(blob, name, 'Excel workbook', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', '.xlsx'))
+    flashStatus('✓ Excel saved ('+(currentForecast||resolveBreakdown()).mode+')');
 }
 
 
