@@ -338,6 +338,36 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
 /* Override entry popup */
 #ovr-popup{position:fixed;z-index:900;background:#fff;border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,.22);padding:12px;width:290px;display:none;font-family:var(--font)}
 #ovr-popup.visible{display:block}
+#exp-popup{position:fixed;z-index:900;background:#fff;border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,.22);padding:12px;width:380px;display:none;font-family:var(--font)}
+#exp-popup.visible{display:block}
+#exp-popup .op-title{font-size:12px;font-weight:700;color:var(--text);margin-bottom:2px}
+#exp-popup .op-sub{font-size:11px;color:var(--text-muted);margin-bottom:8px}
+#exp-popup input[type=text]{min-width:0;padding:6px 8px;border:1px solid #c8c4bc;border-radius:4px;font-size:12px;font-family:var(--font)}
+#exp-popup input[type=text]:focus{outline:none;border-color:#3b82f6}
+#exp-popup input.invalid{border-color:#dc2626;background:#fee2e2}
+#exp-popup .xp-dates{display:flex;gap:10px;margin-bottom:8px;font-size:11px;color:var(--text-muted)}
+#exp-popup .xp-dates label{display:flex;align-items:center;gap:5px}
+#exp-popup .xp-dates input{width:96px;font-family:var(--font-mono)!important}
+#exp-popup .xp-head{display:flex;gap:6px;font-size:10px;color:var(--text-faint);margin-bottom:3px;padding:0 1px}
+#exp-popup .xp-head span:first-child{flex:1}
+#exp-popup .xp-h-amt{width:96px;text-align:right}
+#exp-popup .xp-h-rec{width:66px;text-align:center}
+#exp-popup .xp-h-del{width:18px}
+#exp-popup .op-row{display:flex;gap:6px;align-items:center;margin-bottom:6px}
+#exp-popup .xp-name{flex:1}
+#exp-popup .xp-amt{width:96px;flex:none;text-align:right;font-family:var(--font-mono)!important}
+#exp-popup .xp-rec{width:66px;flex:none;display:flex;justify-content:center}
+#exp-popup .xp-rec input{width:15px;height:15px;cursor:pointer}
+#exp-popup .op-del{border:none;background:none;color:var(--text-faint);cursor:pointer;font-size:13px;width:18px;flex:none;padding:0}
+#exp-popup .op-del:hover{color:var(--bar-crit)}
+#exp-popup .op-hint{font-size:11px;color:var(--text-muted);line-height:1.45;margin:8px 0 10px;min-height:32px}
+#exp-popup .op-hint.warn{color:#b45309}
+.res-float{position:absolute;top:0;bottom:0;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:10px;font-weight:600;color:var(--text-muted);white-space:nowrap;overflow:hidden;z-index:2}
+.gantt-row.cost-row{box-shadow:inset 0 1px 0 var(--border)}
+.gantt-row.exp-row{box-shadow:inset 0 1px 0 var(--border-strong)}
+.task-row.exp-left{box-shadow:inset 0 1px 0 var(--border-strong)}
+.exp-bar{opacity:.85}
+.exp-bar .res-bar-label{font-weight:700}
 #ovr-popup .op-title{font-size:12px;font-weight:700;color:var(--text);margin-bottom:2px}
 #ovr-popup .op-sub{font-size:11px;color:var(--text-muted);margin-bottom:8px}
 #ovr-popup input{width:100%;min-width:0;padding:6px 9px;border:1px solid #c8c4bc;border-radius:4px;font-size:13px;font-family:var(--font-mono);text-align:right}
@@ -418,6 +448,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
   body.printing #color-popup,
   body.printing #ctx-menu,
   body.printing #ovr-popup,
+  body.printing #exp-popup,
   body.printing #hrs-popup,
   body.printing .res-hover,
   body.printing #settings-modal,
@@ -556,6 +587,24 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
   <div style="display:flex;gap:8px;justify-content:flex-end">
     <button class="modal-btn" onclick="closeOverridePopup()">Cancel</button>
     <button class="modal-btn primary" onclick="commitOverride()">Apply</button>
+  </div>
+</div>
+
+<!-- Expenses entry: a forecast bar or an actual box, several items each -->
+<div id="exp-popup">
+  <div class="op-title" id="xp-title"></div>
+  <div class="op-sub" id="xp-sub"></div>
+  <div class="hp-dates xp-dates">
+    <label>From<input id="xp-start" type="text" placeholder="dd/mm/yyyy" autocomplete="off" spellcheck="false"></label>
+    <label>to<input id="xp-end" type="text" placeholder="dd/mm/yyyy" autocomplete="off" spellcheck="false"></label>
+  </div>
+  <div class="xp-head"><span>Item</span><span class="xp-h-amt">Amount</span><span class="xp-h-rec" title="Recoverable: invoiced on to the client as it is (and still a cost). Unticked: a non-recoverable cost.">Recoverable</span><span class="xp-h-del"></span></div>
+  <div id="xp-rows"></div>
+  <div class="op-hint" id="xp-hint"></div>
+  <div style="display:flex;gap:8px;justify-content:flex-end">
+    <button class="modal-btn" id="xp-remove" onclick="removeExp()" style="margin-right:auto;color:var(--bar-crit)">Remove</button>
+    <button class="modal-btn" onclick="closeExpPopup()">Cancel</button>
+    <button class="modal-btn primary" onclick="commitExp()">Apply</button>
   </div>
 </div>
 
@@ -1004,6 +1053,7 @@ function readForecastProp(f){
     basis: f.basis==='hourly' ? 'hourly' : 'fixed',
     budgetFrom: sanitiseBudgetFrom(f.budgetFrom),
     resources: sanitiseResources(f.resources),
+    expenses: sanitiseExpenses(f.expenses),
     savedAt: typeof f.savedAt==='string' ? f.savedAt : ''
   };
 }
@@ -1056,6 +1106,55 @@ function copyResources(list){
     actuals:r.actuals.map(a=>{ const o={start:a.start,end:a.end}; if(a.days!=null) o.days=a.days; else o.hours=a.hours; o.mode=a.mode; return o; })}));
 }
 
+// Expenses: forecast bars (plan) and actual boxes (actual), each holding
+// several entries. Recoverable entries are invoiced on to the client as they
+// are (and are a cost); non-recoverable entries are a cost only. An actual
+// replaces the forecast for the days it covers, as with resourcing.
+//   expenses: {plan:[{start,end,items:[{name,cents,rec?}]}], actual:[{start,end,mode,items:[...]}]}
+function sanitiseExpItems(list){
+  return (Array.isArray(list)?list:[]).filter(x=>x&&isFinite(+x.cents)&&Math.round(+x.cents)!==0)
+    .map(x=>({name:String(x.name==null?'':x.name).replace(/\s+/g,' ').trim().slice(0,60), cents:Math.round(+x.cents), ...(x.rec?{rec:true}:{})}));
+}
+function sanitiseExpenses(e){
+  e=(e&&typeof e==='object')?e:{};
+  const ranges=(list,act)=>(Array.isArray(list)?list:[]).filter(b=>b&&isoDate(b.start)&&isoDate(b.end)&&b.end>=b.start)
+    .map(b=>({start:b.start, end:b.end, ...(act?{mode:['billing','custom'].includes(b.mode)?b.mode:'weekly'}:{}), items:sanitiseExpItems(b.items)}))
+    .filter(b=>b.items.length)
+    .sort((x,y)=>x.start<y.start?-1:x.start>y.start?1:0);
+  return {plan:ranges(e.plan,false), actual:ranges(e.actual,true)};
+}
+function copyExpenses(e){
+  const items=l=>l.map(x=>({name:x.name, cents:x.cents, ...(x.rec?{rec:true}:{})}));
+  e=e||{plan:[],actual:[]};
+  return {plan:(e.plan||[]).map(b=>({start:b.start,end:b.end,items:items(b.items)})),
+          actual:(e.actual||[]).map(b=>({start:b.start,end:b.end,mode:b.mode,items:items(b.items)}))};
+}
+function hasExpenses(h){ const e=h.expenses; return !!(e&&((e.plan||[]).length||(e.actual||[]).length)); }
+function expSum(items){ let cost=0, rec=0; (items||[]).forEach(x=>{ cost+=x.cents; if(x.rec) rec+=x.cents; }); return {cost, rec, non:cost-rec}; }
+// Each forecast bar and actual box is spread evenly over its working days
+// (or its last day if it has none). Days inside an actual box drop the forecast.
+function expenseCalc(h, mode, today){
+  const e=h.expenses||{plan:[],actual:[]}, covered=new Set();
+  (e.actual||[]).forEach(a=>eachDay(a.start,a.end,d=>covered.add(d)));
+  const periods=new Map();
+  const at=k=>{ let p=periods.get(k); if(!p){ p={cost:0,rec:0,actCost:0,actRec:0}; periods.set(k,p); } return p; };
+  let costToDate=0, costRem=0, recToDate=0, recRem=0;
+  const lay=(b, act)=>{
+    const s=expSum(b.items), days=allWorkdays(b.start,b.end);
+    const dd=days.length?days:[b.end];
+    const cs=spreadCents(s.cost,dd), rs=spreadCents(s.rec,dd);
+    dd.forEach(d=>{
+      if(!act && covered.has(d)) return;
+      const c=cs.get(d)||0, r=rs.get(d)||0, p=at(periodKey(d,mode));
+      p.cost+=c; p.rec+=r; if(act){ p.actCost+=c; p.actRec+=r; }
+      if(d<today){ costToDate+=c; recToDate+=r; } else { costRem+=c; recRem+=r; }
+    });
+  };
+  (e.plan||[]).forEach(b=>lay(b,false));
+  (e.actual||[]).forEach(a=>lay(a,true));
+  return {periods, covered, costToDate, costRem, recToDate, recRem, cost:costToDate+costRem, rec:recToDate+recRem};
+}
+
 // Budget periods captured from resourcing (fixed-fee headings):
 //   [{start, end, cents, at}]  a week or billing period, the billable
 //   resourcing value captured on date `at`. It stays as captured (a baseline)
@@ -1077,10 +1176,11 @@ function applyFigures(h, f){
   h.fileUtil=f.utilisation!=null?f.utilisation:null;
   h.basis=f.basis==='hourly'?'hourly':'fixed';
   h.budgetFrom=copyBudgetFrom(f.budgetFrom);
+  h.expenses=copyExpenses(f.expenses);
   h.color=h.fcColor||h.progColor;
 }
 function figuresOf(h){
-  return {fee:h.fee||0, basis:h.basis==='hourly'?'hourly':'fixed', budgetFrom:copyBudgetFrom(h.budgetFrom), actuals:(h.actuals||[]).map(a=>({...a})), resources:copyResources(h.resources), fcColor:h.fcColor||null,
+  return {fee:h.fee||0, basis:h.basis==='hourly'?'hourly':'fixed', budgetFrom:copyBudgetFrom(h.budgetFrom), actuals:(h.actuals||[]).map(a=>({...a})), resources:copyResources(h.resources), expenses:copyExpenses(h.expenses), fcColor:h.fcColor||null,
           order:(h.order??null), excluded:!!h.excluded, savedAt:h.savedAt||''};
 }
 // What gets written into the file for a heading, or null when there is
@@ -1090,6 +1190,7 @@ function forecastPayload(h){
   if(h.basis==='hourly') p.basis='hourly';
   if((h.budgetFrom||[]).length) p.budgetFrom=copyBudgetFrom(h.budgetFrom);
   if((h.resources||[]).length) p.resources=copyResources(h.resources);
+  if(hasExpenses(h)) p.expenses=copyExpenses(h.expenses);
   if(h.fcColor) p.color=h.fcColor;
   if(h.order!=null) p.order=h.order;
   if(h.excluded) p.excluded=true;
@@ -1098,7 +1199,7 @@ function forecastPayload(h){
   if(!isDefaultBilling(billing)) p.billing={...billing};
   if(hoursPerDay!==HPD_DEFAULT) p.hoursPerDay=hoursPerDay;
   if(utilisation!==UTIL_DEFAULT) p.utilisation=utilisation;
-  if(!p.fee && !p.actuals.length && !p.resources && !p.color && p.order==null && !p.excluded && !p.billing && !p.hoursPerDay && !p.basis && !p.budgetFrom && p.utilisation==null) return null;
+  if(!p.fee && !p.actuals.length && !p.resources && !p.color && p.order==null && !p.excluded && !p.billing && !p.hoursPerDay && !p.basis && !p.budgetFrom && !p.expenses && p.utilisation==null) return null;
   return p;
 }
 
@@ -1521,6 +1622,7 @@ function allocateHourly(h){
 function buildForecast(mode){
   const today=todayStr();
   const budgetTotals=new Map(), invTotals=new Map(), actTotals=new Map(), remTotals=new Map(), resTotals=new Map();
+  const expTotals=new Map(), recTotals=new Map(), costTotals=new Map();
   let totalFee=0, unallocated=0;
   const add=(m,k,c)=>m.set(k,(m.get(k)||0)+c);
   const blank=()=>({cents:0,days:0,free:0,freeCents:0,locked:0,act:new Set()});
@@ -1558,10 +1660,24 @@ function buildForecast(mode){
     const resPeriods=new Map();
     res.forEach(rc=>rc.periods.forEach((p,k)=>{
       const q=resPeriods.get(k)||{cents:0,hours:0}; q.cents+=p.cents; q.hours+=p.hours; resPeriods.set(k,q);
-      add(resTotals,k,p.cents);
+      add(resTotals,k,p.cents); add(costTotals,k,p.cents);
     }));
+    // Expenses: a cost; the recoverable part is also invoiced, in the
+    // period it falls in (kept apart from the fee figures on the Invoicing row)
+    const ex=expenseCalc(h,mode,today);
+    const costPeriods=new Map();
+    resPeriods.forEach((q,k)=>costPeriods.set(k,{cents:q.cents,res:q.cents,exp:0,rec:0}));
+    ex.periods.forEach((q,k)=>{
+      const c=costPeriods.get(k)||{cents:0,res:0,exp:0,rec:0}; c.cents+=q.cost; c.exp+=q.cost; c.rec+=q.rec; costPeriods.set(k,c);
+      add(expTotals,k,q.cost); add(costTotals,k,q.cost);
+      if(q.rec){ add(recTotals,k,q.rec); const p=ip.get(k)||blank(); p.rec=(p.rec||0)+q.rec; ip.set(k,p); }
+    });
+    const resToDate=res.reduce((s,x)=>s+x.toDate,0), resRemaining=res.reduce((s,x)=>s+x.remaining,0);
     return {h, a, days:a.N, cents:a.C, periods:bp, inv:ip, act:ap,
-            res, resPeriods, resToDate:res.reduce((s,x)=>s+x.toDate,0), resRemaining:res.reduce((s,x)=>s+x.remaining,0),
+            res, resPeriods, resToDate, resRemaining,
+            ex, costPeriods, costToDate:resToDate+ex.costToDate, costRemaining:resRemaining+ex.costRem,
+            // Invoicing including recoverable expenses (to date = invoiced fee plus expenses before today)
+            invTotal:a.C+ex.rec, invTD:a.actualSum+ex.recToDate, invRem:a.C-a.actualSum+ex.recRem,
             budgetToDate, budgetRemaining:(a.hourly||a.hasCaps?a.budgetTotal:a.C)-budgetToDate,
             // Actuals are real invoices, so they always count as to date
             invToDate:a.actualSum+freeToDate, invRemaining:freeRemaining,
@@ -1570,7 +1686,10 @@ function buildForecast(mode){
             remTotal:a.C-a.actualSum};
   });
   const sum=(f)=>rows.reduce((s,r)=>s+f(r),0);
-  return {mode, rows, people:resourceSummary(rows,mode,today), totals:budgetTotals, invTotals, actTotals, remTotals, resTotals, totalFee, unallocated,
+  return {mode, rows, people:resourceSummary(rows,mode,today), totals:budgetTotals, invTotals, actTotals, remTotals, resTotals, expTotals, recTotals, costTotals, totalFee, unallocated,
+    costToDate:sum(r=>r.costToDate), costRemaining:sum(r=>r.costRemaining),
+    expToDate:sum(r=>r.ex.costToDate), expRemaining:sum(r=>r.ex.costRem), expRec:sum(r=>r.ex.rec),
+    invTotal:sum(r=>r.invTotal), invTD:sum(r=>r.invTD), invRem:sum(r=>r.invRem),
     resToDate:sum(r=>r.resToDate), resRemaining:sum(r=>r.resRemaining),
     remTotal:sum(r=>r.remTotal),
     budgetToDate:sum(r=>r.budgetToDate), budgetRemaining:sum(r=>r.budgetRemaining),
@@ -1691,7 +1810,7 @@ function weekNumberOf(mondayStr){
 // and the actual invoice boxes in lanes beneath it; resource rows work the
 // same way with planned-hours bars on top and actual hours beneath.
 const SUB_ROWS = ['b','i'];
-const SUB_NAMES = {m:'Milestones', b:'Budget', i:'Invoicing', a:'Actual invoices', r:''};
+const SUB_NAMES = {m:'Milestones', b:'Budget', i:'Invoicing', k:'Cost', a:'Actual invoices', r:'', e:'Expenses'};
 // Rows that overlap in time go on separate lanes, so concurrent entries
 // stack instead of covering each other. Lanes depend only on the dates.
 const ACT_LANE_H=15, ACT_LANE_GAP=3;
@@ -1726,9 +1845,11 @@ function rowSpecs(i, r){
   const h=r?r.h:headings[i];
   const out=[{kind:'h',rk:i+'h',ht:ROW_H},
              {kind:'b',rk:i+'b',ht:BUDGET_ROW_H},{kind:'i',rk:i+'i',ht:laneRowHeight(lanesOf(h.actuals).count)},
+             {kind:'k',rk:i+'k',ht:BUDGET_ROW_H},
              {kind:'r',rk:i+'r',ht:RES_HEAD_H}];
   (h.resources||[]).forEach((x,k)=>out.push({kind:'p',k,rk:`${i}p${k}`,ht:resRowHeight(x)}));
   out.push({kind:'x',rk:i+'x',ht:ADD_ROW_H});   // small "+ Add resource" row at the bottom
+  out.push({kind:'e',rk:i+'e',ht:laneRowHeight(lanesOf((h.expenses||{}).actual||[]).count)});   // expenses: forecast bars on top, actuals beneath
   return out;
 }
 function totalRowCount(){ return headings.reduce((s,h,i)=>s+rowSpecs(i,null).length,0); }
@@ -1771,7 +1892,8 @@ function renderLeft() {
     const nDays=r.days, C=r.cents;
     const unalloc = C && !nDays && !(h.actuals||[]).length;
     // Projected profit: total invoicing less total resourcing cost, for this heading
-    const invT=r.actToDate+r.remTotal, resT=Math.round(r.resToDate+r.resRemaining), profit=invT-resT;
+    // Projected profit: total invoicing (fee plus recoverable expenses) less total cost (resourcing plus expenses)
+    const invT=r.invTotal, resT=Math.round(r.costToDate+r.costRemaining), profit=invT-resT;
     const showProfit = !!(invT || resT);
 
     // ── HEADING ROW ──
@@ -1801,7 +1923,7 @@ function renderLeft() {
           data-idx="${i}" value="${C?money2(C):''}" placeholder="$0.00" style="color:${h.color}"
           title="${unalloc?'This heading has no working days in the programme, so its fee cannot be spread.':'Total fee for this stage (fixed-fee). Accepts 12345.50, $12,345.50, 120k or 1.2m. Enter to apply, Escape to cancel.'}"
           onfocus="feeFocus(this)" onblur="feeBlur(event,this)" onkeydown="feeKey(event,this)">`}</div>
-        ${showProfit?`<div class="hfee-line hfee-profit" title="Projected profit: total invoicing (${money2(invT)}) less resourcing cost (${money2(resT)})"><i class="fee-cap">Projected profit</i><span class="hprofit${profit<0?' neg':''}">${money2(profit)}</span></div>`:''}
+        ${showProfit?`<div class="hfee-line hfee-profit" title="Projected profit: total invoicing (${money2(invT)}) less total cost (${money2(resT)}: resourcing and expenses)"><i class="fee-cap">Projected profit</i><span class="hprofit${profit<0?' neg':''}">${money2(profit)}</span></div>`:''}
       </div>
       <div class="task-cell comments-cell"><div class="comments-text" title="${escHtml(h.comments)}">${escHtml(h.comments)}</div></div>
     `;
@@ -1814,6 +1936,7 @@ function renderLeft() {
       const kind=spec.kind;
       if(kind==='p'){ body.appendChild(leftResourceRow(h,i,r,spec)); return; }
       if(kind==='x'){ body.appendChild(leftAddRow(h,i,spec)); return; }
+      if(kind==='e'){ body.appendChild(leftExpenseRow(h,i,r,spec)); return; }
       const sr=document.createElement('div');
       sr.className='task-row tall';
       sr.dataset.idx=i; sr.dataset.rk=spec.rk;
@@ -1835,10 +1958,17 @@ function renderLeft() {
         info = nDays ? `${nDays} working day${nDays!==1?'s':''}` : '';
         if(r.a.imbalance) badge+=`<span class="sub-badge warn" title="Every working day is in an invoiced period, so the rest of the fee has nowhere to go">⚠</span>`;
         else if(r.a.R<0) badge+=`<span class="sub-badge warn" title="Actual invoices add up to more than the total fee">⚠</span>`;
-        if(hasFigures) fee=splitCell3(r.actToDate+r.remTotal, r.actToDate, r.remTotal,
-          'Total invoicing: invoiced to date plus still to invoice (the total fee)',
-          'Invoiced to date: the total of all actual invoices entered',
-          'Remaining: still to be invoiced (total fee less actual invoices)');
+        if(hasFigures || r.ex.rec) fee=splitCell3(r.invTotal, r.invTD, r.invRem,
+          'Total invoicing: the total fee plus recoverable expenses',
+          'Invoiced to date: actual invoices entered, plus recoverable expenses before today',
+          'Remaining: still to be invoiced (total fee less actual invoices), plus recoverable expenses from today on');
+        if(r.ex.rec) badge+=`<span class="sub-badge muted" title="Includes ${money2(r.ex.rec)} of recoverable expenses, invoiced as they fall">+ exp</span>`;
+      } else if(kind==='k'){
+        info = 'Resourcing and expenses';
+        if(r.res.length || hasExpenses(h)) fee=splitCell3(r.costToDate+r.costRemaining, r.costToDate, r.costRemaining,
+          'Total cost: resourcing plus expenses (recoverable and non-recoverable)',
+          `Cost to date: resourcing to date plus expenses before today (${todayTxt})`,
+          'Cost remaining: resourcing and expenses from today on');
       } else if(kind==='r'){
         sr.classList.add('res-head-row');
         sr.style.background=h.color+'22';   // the heading group's tint, as the chart row
@@ -1863,29 +1993,45 @@ function renderLeft() {
   syncScrollSetup();
 }
 
+function hasCostRows(fc){ return fc.rows.some(r=>r.res.length||hasExpenses(r.h)); }
+// What each header strip includes
+function stripTip(id,fc){
+  const line=(l,v)=>`<div class="tt-row"><span>${l}</span><span>${money2(Math.round(v))}</span></div>`;
+  const box=s=>`<div style="margin-top:4px;border-top:1px solid #334155;padding-top:4px">${s}</div>`;
+  if(id==='left-totals-b') return `<strong>Budget</strong><br>The total fee of each heading, spread over its working days.`
+    +`<br><span style="opacity:.75">Fixed fee: equal per working day, unless a period is set to "From resourcing". Hourly rates: the billable resourcing (hours x utilisation x rate).</span>`
+    +box(line('Total budget',fc.budgetToDate+fc.budgetRemaining));
+  if(id==='left-totals-i') return `<strong>Invoicing</strong><br>What is invoiced to the client: actual invoices entered, the rest of each fee as forecast, plus recoverable expenses in the period they fall.`
+    +box(line('Fees',fc.totalFee)+line('Recoverable expenses',fc.expRec)+line('Total invoicing',fc.invTotal));
+  const res=fc.resToDate+fc.resRemaining, exp=fc.expToDate+fc.expRemaining;
+  return `<strong>Cost</strong><br>What the work costs: resourcing (hours x each resource's rate; actual time where entered, otherwise the plan) plus all expenses, recoverable and non-recoverable.`
+    +box(line('Resourcing',res)+line('Expenses',exp)+`<div class="tt-row" style="opacity:.75"><span>&nbsp;&nbsp;of which recoverable</span><span>${money2(fc.expRec)}</span></div>`+line('Total cost',res+exp))
+    +`<div style="opacity:.6;font-size:10px">Recoverable expenses are a cost and are also invoiced, so they do not change the projected profit.</div>`;
+}
 function renderLeftTotals(fc){
-  // Projected profit: total invoicing (to date + still to invoice) less total resourcing cost
-  const invTotal=fc.actToDate+fc.remTotal, resTotal=Math.round(fc.resToDate+fc.resRemaining), profit=invTotal-resTotal;
+  // Projected profit: total invoicing (fee plus recoverable expenses) less total cost (resourcing plus expenses)
+  const invTotal=fc.invTotal, resTotal=Math.round(fc.costToDate+fc.costRemaining), profit=invTotal-resTotal;
   const blank='<div class="lt-cell"></div><div class="lt-cell"></div><div class="lt-cell"></div>';
   const strip=(id,nameHtml,title,feeHtml)=>{
     document.getElementById(id).innerHTML=`${blank}
       <div class="lt-cell">${nameHtml}</div>
-      <div class="lt-cell"><span class="lt-title">${title}</span></div>
+      <div class="lt-cell"><span class="lt-title" data-tip="${id}">${title}</span></div>
       <div class="lt-cell lt-split">${feeHtml}</div>
       <div class="lt-cell"></div>`;
   };
   strip('left-totals-b',
-    `<span class="lt-label">Total projected profit</span><span class="lt-profit${profit<0?' neg':''}" title="Total invoicing (${money2(invTotal)}) less total resourcing cost (${money2(resTotal)}), all headings">${money2(profit)}</span>`
+    `<span class="lt-label">Total projected profit</span><span class="lt-profit${profit<0?' neg':''}" title="Total invoicing (${money2(invTotal)}) less total cost (${money2(resTotal)}: resourcing and expenses), all headings">${money2(profit)}</span>`
       +(fc.unallocated?`<span class="lt-warn" style="margin-left:8px" title="Fees on headings with no working days are not in the chart">⚠ ${money2(fc.unallocated)} not spread</span>`:''),
     'Budget', splitCell3(fc.budgetToDate+fc.budgetRemaining,fc.budgetToDate,fc.budgetRemaining,'Total budget, all headings','Budget to date, all headings','Budget remaining, all headings'));
   const bad=fc.imbalanced.length;
   strip('left-totals-i',
     bad?`<span class="lt-warn">⚠ ${bad} heading${bad!==1?'s':''} cannot balance to the fee</span>`:'',
-    'Invoicing', splitCell3(fc.actToDate+fc.remTotal,fc.actToDate,fc.remTotal,'Total invoicing, all headings (the total fees)','Invoiced to date, all headings','Still to be invoiced, all headings'));
-  // Resourcing cost strip, then one strip per person, matching the chart rows
-  const hasRes=fc.rows.some(r=>r.res.length), cs=document.getElementById('left-totals-c');
-  cs.style.display=hasRes?'':'none';
-  if(hasRes) strip('left-totals-c','','Resourcing', splitCell3(fc.resToDate+fc.resRemaining,fc.resToDate,fc.resRemaining,'Total resourcing cost, all headings','Resourcing cost to date, all headings: actual time, plus planned time before today where none is entered','Resourcing cost remaining, all headings: planned time from today on'));
+    'Invoicing', splitCell3(fc.invTotal,fc.invTD,fc.invRem,'Total invoicing, all headings: the total fees plus recoverable expenses','Invoiced to date, all headings, plus recoverable expenses before today','Still to be invoiced, all headings, plus recoverable expenses from today on'));
+  // Cost strip (resourcing and expenses), then one strip per person, matching the chart rows
+  const hasCost=hasCostRows(fc), cs=document.getElementById('left-totals-c');
+  cs.style.display=hasCost?'':'none';
+  if(hasCost) strip('left-totals-c','','Cost', splitCell3(fc.costToDate+fc.costRemaining,fc.costToDate,fc.costRemaining,'Total cost, all headings: resourcing plus expenses','Cost to date, all headings: resourcing to date plus expenses before today','Cost remaining, all headings: resourcing and expenses from today on'));
+  document.querySelectorAll('#left-totals-b .lt-title,#left-totals-i .lt-title,#left-totals-c .lt-title').forEach(el=>attachTip(el,()=>stripTip(el.dataset.tip,fc)));
   const host=document.getElementById('left-totals-r');
   host.innerHTML=fc.people.map((pp,n)=>`<div class="left-totals res-sum${n===0?' first':''}">${blank}
       <div class="lt-cell"><span class="res-sum-name" title="${escHtml(resLabel(pp.res))}">${escHtml(resLabel(pp.res))}</span>${pp.over.size?`<span class="over-badge" title="Weeks where this person is assigned more time than the week's working days">⚠ ${pp.over.size} week${pp.over.size!==1?'s':''} over</span>`:''}</div>
@@ -2021,9 +2167,11 @@ function renderGanttHeader(minD,maxD,totalPx,fc) {
   // remaining figure on top and the actual invoices beneath it.
   const periods=periodsInRange(minD,maxD,fc.mode,totalPx);
   // Third cost row, only when there is resourcing: cost per period, all resources
-  const hasRes=fc.rows.some(r=>r.res.length);
-  const resMap=new Map(); fc.resTotals.forEach((c,k)=>resMap.set(k,Math.round(c)));
-  [['b',fc.totals],['i',fc.remTotals]].concat(hasRes?[['c',resMap]]:[]).forEach(([kind,map])=>{
+  const hasRes=hasCostRows(fc);
+  const resMap=new Map(); fc.costTotals.forEach((c,k)=>resMap.set(k,Math.round(c)));
+  // Invoicing: still to invoice plus recoverable expenses, by period
+  const invMap=new Map(fc.remTotals); fc.recTotals.forEach((c,k)=>invMap.set(k,(invMap.get(k)||0)+c));
+  [['b',fc.totals],['i',invMap]].concat(hasRes?[['c',resMap]]:[]).forEach(([kind,map])=>{
     const tr=document.createElement('div'); tr.className='gantt-totals-row tall';
     tr.dataset.kind=kind;
     tr.style.width=(totalPx+200)+'px';
@@ -2084,23 +2232,27 @@ function loadTip(pp,p,mode){
   return html+`</div><div style="opacity:.6;font-size:10px">All headings. Actual time where entered, otherwise the plan.</div>`;
 }
 
-function rowMap(r,kind){ return kind==='b'?r.periods:kind==='i'?r.inv:kind==='c'?r.resPeriods:r.act; }
+function rowMap(r,kind){ return kind==='b'?r.periods:kind==='i'?r.inv:kind==='c'?r.costPeriods:r.act; }
 
 function totalTip(fc,p,cents,kind){
-  const ttl={b:'Budget',i:'Remaining to invoice',a:'Actual invoices',c:'Resourcing cost'}[kind];
+  const ttl={b:'Budget',i:'Remaining to invoice',a:'Actual invoices',c:'Cost'}[kind];
   let html=`<strong>${ttl}, ${escHtml(periodName(p.key,fc.mode,true))}</strong>`
     +`<br>${fmtDisplay(p.start)} to ${fmtDisplay(p.end)}`
     +`<br>${workdaysInRange(parseDate(p.start),parseDate(p.end))} working days`;
   if(!cents) return html+'<br><span style="opacity:.7">Nothing in this period</span>';
   html+=`<div style="margin-top:4px;border-top:1px solid #334155;padding-top:4px">`;
   fc.rows.forEach(r=>{
-    const pp=rowMap(r,kind).get(p.key); const v=pp?Math.round(kind==='i'?pp.freeCents:pp.cents):0; if(!v) return;
+    const pp=rowMap(r,kind).get(p.key); const v=pp?Math.round(kind==='i'?pp.freeCents+(pp.rec||0):pp.cents):0; if(!v) return;
     html+=`<div class="tt-row"><span><span class="tt-dot" style="background:${r.h.color}"></span>${escHtml(r.h.name)}</span><span>${money2(v)}</span></div>`;
   });
   html+=`<div class="tt-row" style="font-weight:700;margin-top:2px"><span>Total</span><span>${money2(cents)}</span></div></div>`;
-  if(kind==='i') html+=`<div style="opacity:.6;font-size:10px">Still to be invoiced in this period, not counting actual invoices</div>`;
+  if(kind==='i') html+=`<div style="opacity:.6;font-size:10px">Still to be invoiced in this period, not counting actual invoices. Includes recoverable expenses${fc.recTotals.get(p.key)?` (${money2(fc.recTotals.get(p.key))})`:''}.</div>`;
   if(kind==='a') html+=`<div style="opacity:.6;font-size:10px">Actual invoices dated in this period</div>`;
-  if(kind==='c') html+=`<div style="opacity:.6;font-size:10px">Hours x rate, every resource (including any left out of the schedule). Actual time where entered, otherwise the plan.</div>`;
+  if(kind==='c'){
+    const ex=fc.expTotals.get(p.key)||0, rs=Math.round(fc.resTotals.get(p.key)||0);
+    html+=`<div class="tt-row" style="opacity:.8"><span>Resourcing</span><span>${money2(rs)}</span></div><div class="tt-row" style="opacity:.8"><span>Expenses</span><span>${money2(ex)}</span></div>`;
+    html+=`<div style="opacity:.6;font-size:10px">Resourcing (hours x rate, every resource, actual time where entered) plus all expenses.</div>`;
+  }
   return html;
 }
 
@@ -2194,6 +2346,8 @@ function renderGanttBars(totalPx,fc) {
     rowSpecs(i,r).slice(1).forEach(spec=>{
       const kind=spec.kind;
       if(kind==='r'){ ganttRows.appendChild(drawResTotalsRow(r,i,spec,mode)); return; }
+      if(kind==='k'){ ganttRows.appendChild(drawCostRow(r,i,spec,mode)); return; }
+      if(kind==='e'){ ganttRows.appendChild(drawExpenseRow(r,i,spec,mode)); return; }
       if(kind==='p'){ ganttRows.appendChild(drawResourceRow(r,i,spec,mode)); return; }
       if(kind==='x'){
         const xr=document.createElement('div'); xr.className='gantt-row res-add-row';
@@ -2315,7 +2469,7 @@ function drawPeriodLabels(row, r, segX, map, mode, kind){
     // The green bar on the Invoicing row shows only what is still to be invoiced: a period
     // covered by an invoice in full is blank; one covered in part shows what
     // is left of it. Actual amounts live in the invoice boxes below the bar.
-    const val = kind==='i' ? p.freeCents : p.cents;
+    const val = kind==='i' ? p.freeCents+(p.rec||0) : p.cents;
     if(!val) return;
     const b=periodBounds(key,mode);
     const px0=xForDate(b.start), px1=xForDate(b.next);
@@ -2427,10 +2581,11 @@ function labelTip(r,key,mode,kind,p){
       +`<br><strong>${money2(p.cents)}</strong> <span style="opacity:.7">(${(C?p.cents/C*100:0).toFixed(1)}% of ${money2(C)})</span>`;
     return html+`<br><span style="opacity:.6;font-style:italic">Actual invoices go on the Invoicing row</span>`;
   }
-  html+=`<br><strong>${money2(p.freeCents)}</strong> still to be invoiced`;
+  html+=`<br><strong>${money2(p.freeCents+(p.rec||0))}</strong> still to be invoiced`;
+  if(p.rec) html+=`<br><span style="opacity:.75">Fee ${money2(p.freeCents)} + recoverable expenses ${money2(p.rec)}</span>`;
   html+= r.a.hourly
     ? `<br><span style="opacity:.75">Forecast from the billable resourcing in this ${unitName(mode)} (hourly rates)</span>`
-    : `<br><span style="opacity:.75">${p.free} working day${p.free!==1?'s':''} not yet invoiced share the ${money2(r.a.R)} left of the fee</span>`;
+    : p.free ? `<br><span style="opacity:.75">${p.free} working day${p.free!==1?'s':''} not yet invoiced share the ${money2(r.a.R)} left of the fee</span>` : '';
   const by=[...new Set([...(p.lockBy||[]),...p.act])].map(i=>h.actuals[i]).filter(Boolean);
   if(by.length) html+=`<br>Part of this ${unitName(mode)} is already invoiced: ${by.map(a=>escHtml(a.label||'invoice')).join(', ')}`;
   return html+`<br><span style="opacity:.6;font-style:italic">Click below the green bar on the Invoicing row to enter an actual invoice.</span>`;
@@ -2915,11 +3070,8 @@ function drawResTotalsRow(r, i, spec, mode){
     const x0=Math.max(0,xForDate(b.start)), x1=Math.min(ganttTotalPx,xForDate(b.next));
     if(x1<=x0) return;
     const cell=document.createElement('div');
-    // Over resourced: this period's resourcing cost is more than its budget
-    // (fixed-fee headings; on hourly rates the budget IS the resourcing)
-    const bud=(r.periods.get(key)||{cents:0}).cents;
-    const over=!r.a.hourly && c>bud;
-    cell.className='res-total-cell'+(over?' over':'');
+    // Resourcing cost only, as plain figures (the Cost row above carries the total and the budget flag)
+    cell.className='res-float';
     cell.dataset.key=key;
     cell.style.left=x0+'px'; cell.style.width=(x1-x0)+'px';
     cell.textContent = mode==='weekly' ? money0(c) : fitText(c,x1-x0,TOTAL_FONT_PX,TOTAL_WEIGHT);
@@ -2940,12 +3092,7 @@ function resTotalsTip(r,key,mode){
     html+=`<div class="tt-row"><span>${escHtml(resLabel(rc.res))}${p.actH?' <span style="opacity:.6">(actual)</span>':''}</span><span>${fmtHours(p.hours)} · ${money2(Math.round(p.cents))}</span></div>`;
   });
   html+=`<div class="tt-row" style="font-weight:700;margin-top:2px"><span>Total</span><span>${fmtHours(H)} · ${money2(Math.round(C))}</span></div></div>`;
-  if(!r.a.hourly){
-    const bud=(r.periods.get(key)||{cents:0}).cents, c=Math.round(C);
-    html+=`<div class="tt-row"><span>Budget for this ${unitName(mode)}</span><span>${money2(bud)}</span></div>`;
-    if(c>bud) html+=`<div style="color:#fca5a5">⚠ Over resourced by ${money2(c-bud)}</div>`;
-  }
-  return html;
+  return html+`<span style="opacity:.6;font-size:10px">Resourcing only. The Cost row adds expenses and compares with the budget.</span>`;
 }
 
 function drawResourceRow(r, i, spec, mode){
@@ -3098,7 +3245,7 @@ function attachResHover(row){
   let box=null;
   row.addEventListener('mousemove', e=>{
     const onEmpty = e.target===row || e.target.classList.contains('res-hover');
-    if(!onEmpty || resDrawing || hrsCfg){ if(box) box.style.display='none'; return; }
+    if(!onEmpty || resDrawing || hrsCfg || (typeof expCfg!=='undefined' && expCfg)){ if(box) box.style.display='none'; return; }
     const rect=row.getBoundingClientRect(), x=e.clientX-rect.left, y=e.clientY-rect.top;
     const key=periodKey(dateAtX(x),breakdownView), b=periodBounds(key,breakdownView);
     const x0=Math.max(0,xForDate(b.start)), x1=Math.min(ganttTotalPx,xForDate(b.next));
@@ -3569,7 +3716,7 @@ function closeHoursPopup(){
   if(cfg && cfg.ghost && cfg.ghost.el) cfg.ghost.el.remove();
   if(cfg && cfg.onClose) cfg.onClose();
 }
-function closeAllPopups(){ closeCtx(); closeOverridePopup(); closeHoursPopup(); }
+function closeAllPopups(){ closeCtx(); closeOverridePopup(); closeHoursPopup(); if(typeof closeExpPopup==='function') closeExpPopup(); }
 document.getElementById('hp-input').addEventListener('input',updateHoursHint);
 ['hp-start','hp-end'].forEach(id=>{
   const el=document.getElementById(id), nat=document.getElementById(id+'-native');
@@ -3864,6 +4011,391 @@ function moveResource(i,k,d){
   if(j<0||j>=list.length) return;
   [list[k],list[j]]=[list[j],list[k]];
   refresh();
+}
+
+// ═══════════════════════════════════════════════════════
+//  COST ROW (per heading): resourcing plus expenses, by period
+//  Red where the cost the practice carries (resourcing and non-recoverable
+//  expenses) is more than the period's budget (fixed-fee headings).
+// ═══════════════════════════════════════════════════════
+function costOver(r,key){
+  if(r.a.hourly) return 0;
+  const q=r.costPeriods.get(key); if(!q) return 0;
+  const carried=Math.round(q.res+q.exp-q.rec), bud=(r.periods.get(key)||{cents:0}).cents;
+  return carried>bud ? carried-bud : 0;
+}
+function drawCostRow(r, i, spec, mode){
+  const row=document.createElement('div');
+  row.className='gantt-row tall cost-row';
+  row.dataset.idx=i; row.dataset.rk=spec.rk;
+  row.style.height=spec.ht+'px';
+  r.costPeriods.forEach((q,key)=>{
+    const c=Math.round(q.cents);
+    if(!c) return;
+    const b=periodBounds(key,mode);
+    const x0=Math.max(0,xForDate(b.start)), x1=Math.min(ganttTotalPx,xForDate(b.next));
+    if(x1<=x0) return;
+    const cell=document.createElement('div');
+    cell.className='res-total-cell'+(costOver(r,key)?' over':'');
+    cell.dataset.key=key;
+    cell.style.left=x0+'px'; cell.style.width=(x1-x0)+'px';
+    cell.textContent = mode==='weekly' ? money0(c) : fitText(c,x1-x0,TOTAL_FONT_PX,TOTAL_WEIGHT);
+    attachTip(cell,()=>costTip(r,key,mode));
+    row.appendChild(cell);
+  });
+  row.addEventListener('contextmenu', e=>{ e.preventDefault(); hideTooltip(); });
+  return row;
+}
+function costTip(r,key,mode){
+  const b=periodBounds(key,mode), q=r.costPeriods.get(key)||{cents:0,res:0,exp:0,rec:0};
+  let html=`<strong>${escHtml(r.h.name)}</strong><br>Cost, ${escHtml(periodName(key,mode,true))}<br>${fmtDisplay(b.start)} to ${fmtDisplay(b.end)}`;
+  html+=`<div style="margin-top:4px;border-top:1px solid #334155;padding-top:4px">`;
+  r.res.forEach(rc=>{
+    const p=rc.periods.get(key); if(!p || (!p.hours && !p.cents)) return;
+    html+=`<div class="tt-row"><span>${escHtml(resLabel(rc.res))}${p.actH?' <span style="opacity:.6">(actual)</span>':''}</span><span>${fmtHours(p.hours)} · ${money2(Math.round(p.cents))}</span></div>`;
+  });
+  if(q.exp) html+=`<div class="tt-row"><span>Expenses${q.rec?` <span style="opacity:.6">(${money2(q.rec)} recoverable)</span>`:''}</span><span>${money2(q.exp)}</span></div>`;
+  html+=`<div class="tt-row" style="font-weight:700;margin-top:2px"><span>Total cost</span><span>${money2(Math.round(q.cents))}</span></div></div>`;
+  if(!r.a.hourly){
+    const bud=(r.periods.get(key)||{cents:0}).cents, over=costOver(r,key);
+    html+=`<div class="tt-row"><span>Budget for this ${unitName(mode)}</span><span>${money2(bud)}</span></div>`;
+    if(over) html+=`<div style="color:#fca5a5">⚠ Over budget by ${money2(over)}</div><div style="opacity:.6;font-size:10px">Resourcing plus non-recoverable expenses, against the budget</div>`;
+  }
+  return html;
+}
+
+// ═══════════════════════════════════════════════════════
+//  EXPENSES ROW (per heading, under the resourcing)
+//  Top band: forecast bars, one after another. Lower lanes: actual boxes,
+//  which replace the forecast for the days they cover. Each bar or box holds
+//  several items, each recoverable or not. Label: "$cost / $recoverable".
+// ═══════════════════════════════════════════════════════
+function expList(h,kind){ h.expenses=h.expenses||{plan:[],actual:[]}; h.expenses.plan=h.expenses.plan||[]; h.expenses.actual=h.expenses.actual||[]; return h.expenses[kind]; }
+function expText(items, short){
+  const s=expSum(items);
+  if(short) return money0(s.cost);
+  return s.rec ? `${money0(s.cost)} / ${money0(s.rec)}` : money0(s.cost);
+}
+function expItemsHtml(items){
+  return items.map(x=>`<div class="tt-row"><span>${escHtml(x.name||'Expense')}${x.rec?' <span style="opacity:.6">(recoverable)</span>':''}</span><span>${money2(x.cents)}</span></div>`).join('');
+}
+function expTip(h, ex, b, kind){
+  const s=expSum(b.items), wd=workdaysInRange(parseDate(b.start),parseDate(b.end));
+  let html=`<strong>${escHtml(h.name)}</strong><br>${kind==='plan'?'Forecast':'Actual'} expenses<br>${fmtDisplay(b.start)} to ${fmtDisplay(b.end)}`
+    +`<br>${weeksText(b.start,b.end)} · ${wd} working day${wd!==1?'s':''}`
+    +`<div style="margin-top:4px;border-top:1px solid #334155;padding-top:4px">${expItemsHtml(b.items)}`
+    +`<div class="tt-row" style="font-weight:700;margin-top:2px"><span>Cost</span><span>${money2(s.cost)}</span></div>`
+    +`<div class="tt-row"><span>Recoverable (invoiced)</span><span>${money2(s.rec)}</span></div>`
+    +`<div class="tt-row"><span>Non-recoverable</span><span>${money2(s.non)}</span></div></div>`
+    +`<span style="opacity:.75">Spread evenly over its working days</span>`;
+  if(kind==='plan'){
+    let cov=0; eachDay(b.start,b.end,d=>{ if(ex.covered.has(d)&&isWorkday(d)) cov++; });
+    if(cov) html+=`<br><span style="opacity:.75">${cov} working day${cov!==1?'s are':' is'} covered by actual expenses, which replace the forecast there</span>`;
+  }
+  return html+`<br><span style="opacity:.6;font-style:italic">Click to change, drag to move, drag the ends to stretch (snaps to weeks; Shift for days, Ctrl for periods), right-click for options</span>`;
+}
+function drawExpenseRow(r, i, spec, mode){
+  const h=r.h, ex=r.ex, plan=expList(h,'plan'), act=expList(h,'actual');
+  const row=document.createElement('div');
+  row.className='gantt-row res-prow exp-row';
+  row.dataset.idx=i; row.dataset.rk=spec.rk;
+  row.style.height=spec.ht+'px';
+  const ink=textOn(h.color);
+  plan.forEach((b,bi)=>{
+    const x0=xForDate(b.start), x1=xForDate(b.end)+pxPerDay, w=Math.max(6,x1-x0);
+    const bar=document.createElement('div');
+    bar.className='gantt-bar res-bar exp-bar';
+    bar.style.left=x0+'px'; bar.style.width=w+'px'; bar.style.top=INV_BAR_TOP+'px';
+    bar.style.background=h.color; bar.dataset.bi=bi;
+    let run=null; const covers=[];
+    eachDay(b.start,b.end,d=>{ if(ex.covered.has(d)){ if(run) run.end=d; else run={start:d,end:d}; } else if(run){ covers.push(run); run=null; } });
+    if(run) covers.push(run);
+    covers.forEach(c=>{
+      const el=document.createElement('div'); el.className='res-cover';
+      el.style.left=(xForDate(c.start)-x0)+'px'; el.style.width=(xForDate(c.end)+pxPerDay-xForDate(c.start))+'px';
+      bar.appendChild(el);
+    });
+    const from=resLabelDate(b,ex.covered);
+    if(from){
+      const lx=xForDate(from)-x0+5, room=w-lx-6;
+      const txt=[expText(b.items),expText(b.items,true)].find(t=>textWidth(t,LABEL_FONT_PX,LABEL_WEIGHT)<=room);
+      if(txt){ const lbl=document.createElement('div'); lbl.className='res-bar-label'; lbl.textContent=txt; lbl.style.left=lx+'px'; lbl.style.color=ink; bar.appendChild(lbl); }
+    }
+    addDragEnds(bar, (e,m)=>startExpDrag(e,i,'plan',bi,m,bar));
+    bar.addEventListener('contextmenu',e=>{ e.preventDefault(); e.stopPropagation(); openExpItemMenu(e,i,'plan',bi); });
+    attachTip(bar,()=>expTip(h,ex,b,'plan'));
+    row.appendChild(bar);
+  });
+  const {lane}=lanesOf(act);
+  act.forEach((a,ai)=>{
+    const x0=Math.max(0,xForDate(a.start)), x1=Math.min(ganttTotalPx,xForDate(fmt(addDay(a.end))));
+    if(x1<=x0) return;
+    const w=Math.max(6,x1-x0-2);
+    const box=document.createElement('div');
+    box.className='fee-label pill ovr inv-box exp-act-box';
+    box.dataset.ai=ai;
+    box.style.left=(x0+1)+'px'; box.style.width=w+'px';
+    box.style.top=(INV_LANE_TOP+lane[ai]*(ACT_LANE_H+ACT_LANE_GAP))+'px';
+    box.style.border=`1px solid ${h.color}`; box.style.color=h.color;
+    box.textContent=[expText(a.items),expText(a.items,true)].find(t=>textWidth(t,9,700)<=w-5)||'';
+    addDragEnds(box, (e,m)=>startExpDrag(e,i,'actual',ai,m,box));
+    box.addEventListener('click',e=>e.stopPropagation());
+    box.addEventListener('contextmenu',e=>{ e.preventDefault(); e.stopPropagation(); openExpItemMenu(e,i,'actual',ai); });
+    attachTip(box,()=>expTip(h,ex,a,'actual'));
+    row.appendChild(box);
+  });
+  attachResHover(row);
+  row.addEventListener('mousedown',e=>{
+    if(e.button!==0 || e.target!==row && !e.target.classList.contains('res-hover')) return;
+    const y=e.clientY-row.getBoundingClientRect().top;
+    if(y<INV_LANE_TOP-2) startExpDraw(e,i,row);
+  });
+  row.addEventListener('click',e=>{
+    if(e.button!==0 || e.target!==row && !e.target.classList.contains('res-hover')) return;
+    const y=e.clientY-row.getBoundingClientRect().top;
+    if(y>=INV_LANE_TOP-2) openExpActualAt(e,i,row);
+  });
+  row.addEventListener('contextmenu',e=>openExpRowMenu(e,i,row));
+  return row;
+}
+// Drag handles on both ends, and a move on the body
+function addDragEnds(el, start){
+  const hl=document.createElement('div'); hl.className='res-h res-hl'; hl.title='Drag to change the start';
+  const hr=document.createElement('div'); hr.className='res-h res-hr'; hr.title='Drag to change the end';
+  el.appendChild(hl); el.appendChild(hr);
+  hl.addEventListener('mousedown',e=>start(e,'l'));
+  hr.addEventListener('mousedown',e=>start(e,'r'));
+  el.addEventListener('mousedown',e=>{ if(!e.target.classList.contains('res-h')) start(e,'move'); });
+}
+function expGap(list, date, skip){
+  let lo=null, hi=null;
+  list.forEach((b,bi)=>{ if(bi===skip) return; if(b.end<date&&(!lo||b.end>lo)) lo=b.end; if(b.start>date&&(!hi||b.start<hi)) hi=b.start; });
+  return {inside:list.some((b,bi)=>bi!==skip&&b.start<=date&&b.end>=date), after:lo?fmt(addDay(lo,1)):null, before:hi?fmt(addDay(hi,-1)):null};
+}
+function expOverlap(list, s, e, skip){
+  const o=list.find((b,bi)=>bi!==skip && b.start<=e && b.end>=s);
+  return o ? `Overlaps the forecast bar from ${fmtDisplay(o.start)} to ${fmtDisplay(o.end)}. Add the items to that bar instead, or change the dates.` : '';
+}
+function startExpDraw(e, i, row){
+  e.preventDefault(); hideTooltip(); closeAllPopups();
+  const plan=expList(headings[i],'plan');
+  const rect=row.getBoundingClientRect(), anchor=dateAtX(e.clientX-rect.left), gap=expGap(plan,anchor);
+  if(gap.inside) return;
+  resDrawing=true;
+  const ghost=document.createElement('div'); ghost.className='res-ghost'; row.appendChild(ghost);
+  let s=anchor, en=anchor;
+  const clamp=(a,z)=>{ if(gap.after&&a<gap.after) a=gap.after; if(gap.before&&z>gap.before) z=gap.before; return [a,z]; };
+  const paint=()=>{ ghost.style.left=xForDate(s)+'px'; ghost.style.width=Math.max(4,xForDate(en)+pxPerDay-xForDate(s))+'px'; };
+  snapDrag(e,(dx,u,ev)=>{
+    [s,en]=clamp(...snapCover(anchor,dateAtX(Math.max(0,ev.clientX-rect.left)),u));
+    paint(); dragTip(ev,s,en);
+  },(moved,me)=>{
+    resDrawing=false; hideTooltip();
+    if(!moved){ const b=periodBounds(periodKey(anchor,breakdownView),breakdownView); [s,en]=clamp(b.start,b.end); }
+    if(s>en){ ghost.remove(); return; }
+    paint();
+    openExpPopup(me,i,'plan',null,s,en,ghost);
+  },4);
+}
+function openExpActualAt(e, i, row){
+  hideTooltip(); closeAllPopups();
+  const mode=breakdownView, key=periodKey(dateAtX(e.clientX-row.getBoundingClientRect().left),mode), b=periodBounds(key,mode);
+  const act=expList(headings[i],'actual'), ai=act.findIndex(a=>a.start===b.start&&a.end===b.end);
+  openExpPopup(e,i,'actual',ai>=0?ai:null,b.start,b.end,null);
+}
+// Move or stretch a bar (never over its neighbour) or an actual box (overlaps allowed)
+function startExpDrag(e, i, kind, idx, mode, el){
+  if(e.button!==0) return;
+  e.preventDefault(); e.stopPropagation(); hideTooltip(); closeAllPopups();
+  const list=expList(headings[i],kind), b=list[idx];
+  let prevEnd=null, nextStart=null;
+  if(kind==='plan') list.forEach((o,oi)=>{ if(oi===idx) return; if(o.end<b.start&&(!prevEnd||o.end>prevEnd)) prevEnd=o.end; if(o.start>b.end&&(!nextStart||o.start<nextStart)) nextStart=o.start; });
+  let ns=b.start, ne=b.end;
+  const add=(d,n)=>fmt(addDay(d,n)), inset=kind==='plan'?0:1;
+  snapDrag(e,(dx,u,ev)=>{
+    el.classList.add('dragging');
+    [ns,ne]=snapRange(b.start,b.end,mode,dx,u);
+    if(mode==='move'){
+      if(prevEnd && ns<=prevEnd){ const sh=daysBetween(ns,add(prevEnd,1)); ns=add(ns,sh); ne=add(ne,sh); }
+      if(nextStart && ne>=nextStart){ const sh=daysBetween(ne,add(nextStart,-1)); ns=add(ns,sh); ne=add(ne,sh); }
+      if(prevEnd && ns<=prevEnd) ns=add(prevEnd,1);
+    } else if(mode==='l'){ if(prevEnd&&ns<=prevEnd) ns=add(prevEnd,1); }
+    else { if(nextStart&&ne>=nextStart) ne=add(nextStart,-1); }
+    el.style.left=(xForDate(ns)+inset)+'px'; el.style.width=Math.max(6,xForDate(ne)+pxPerDay-xForDate(ns)-2*inset)+'px';
+    dragTip(ev,ns,ne,`<br>${expText(b.items)} · ${kind==='plan'?'forecast':'actual'}`);
+  },(moved,me)=>{
+    hideTooltip();
+    if(!moved){ if(mode==='move') openExpPopup(me,i,kind,idx,b.start,b.end,null); return; }
+    if(ns===b.start && ne===b.end){ refresh(); return; }
+    b.start=ns; b.end=ne; if(kind==='actual') b.mode=rangeMode(ns,ne);
+    list.sort((x,y)=>x.start<y.start?-1:x.start>y.start?1:0);
+    refresh();
+  });
+}
+
+// ── The expenses popup
+let expCfg=null;
+function expRowHtml(x){
+  return `<div class="op-row xp-row">
+    <input class="xp-name" type="text" maxlength="60" autocomplete="off" spellcheck="false" placeholder="${x?'Item':'Add an item'}" value="${escHtml(x?x.name:'')}">
+    <input class="xp-amt" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" placeholder="$0.00" value="${x?(x.cents/100).toFixed(2):''}">
+    <span class="xp-rec"><input type="checkbox" ${x&&x.rec?'checked':''} title="Recoverable: invoiced on to the client as it is"></span>
+    <button class="op-del" type="button" title="Remove this item" onclick="this.closest('.op-row').remove();expAddBlank();updateExpHint()">✕</button>
+  </div>`;
+}
+function expAddBlank(){
+  const rows=document.getElementById('xp-rows');
+  const last=rows.lastElementChild;
+  if(!last || last.querySelector('.xp-name').value.trim() || last.querySelector('.xp-amt').value.trim()){
+    rows.insertAdjacentHTML('beforeend',expRowHtml(null)); wireExpRow(rows.lastElementChild);
+  }
+}
+function wireExpRow(row){
+  row.querySelectorAll('input').forEach(inp=>{
+    inp.addEventListener('input',()=>{ expAddBlank(); updateExpHint(); });
+    inp.addEventListener('change',updateExpHint);
+    inp.addEventListener('keydown',e=>{
+      if(e.key==='Enter'){ e.preventDefault(); commitExp(); }
+      if(e.key==='Escape'){ e.preventDefault(); closeExpPopup(); }
+    });
+  });
+}
+function openExpPopup(e, i, kind, idx, start, end, ghostEl){
+  closeHoursPopup(); closeOverridePopup(); closeCtx();
+  const h=headings[i], list=expList(h,kind), cur=idx!=null?list[idx]:null;
+  expCfg={i,kind,idx,ghost:ghostEl||null};
+  document.getElementById('xp-title').textContent=h.name;
+  document.getElementById('xp-sub').textContent=(kind==='plan'?'Forecast expenses':'Actual expenses')+(cur?'':' (new)')+'. Spread evenly over the working days.';
+  document.getElementById('xp-start').value=fmtDisplay(cur?cur.start:start);
+  document.getElementById('xp-end').value=fmtDisplay(cur?cur.end:end);
+  const rows=document.getElementById('xp-rows');
+  rows.innerHTML=(cur?cur.items:[]).map(x=>expRowHtml(x)).join('')+expRowHtml(null);
+  rows.querySelectorAll('.op-row').forEach(wireExpRow);
+  ['xp-start','xp-end'].forEach(id=>{ const el=document.getElementById(id); el.oninput=updateExpHint; el.onkeydown=ev=>{ if(ev.key==='Enter'){ ev.preventDefault(); commitExp(); } if(ev.key==='Escape'){ ev.preventDefault(); closeExpPopup(); } }; });
+  document.getElementById('xp-remove').style.display=cur?'':'none';
+  const pop=document.getElementById('exp-popup');
+  pop.classList.add('visible');
+  const pr=pop.getBoundingClientRect();
+  pop.style.left=Math.max(8,Math.min(e.clientX, window.innerWidth-pr.width-8))+'px';
+  pop.style.top=Math.max(8,Math.min(e.clientY+8, window.innerHeight-pr.height-8))+'px';
+  updateExpHint();
+  const first=rows.querySelector(cur?'.xp-amt':'.xp-name'); first.focus(); first.select();
+}
+// The popup's items and dates, or {bad} when something is not recognised
+function readExpPopup(){
+  let bad='';
+  const s=parseDateText(document.getElementById('xp-start').value), e=parseDateText(document.getElementById('xp-end').value);
+  document.getElementById('xp-start').classList.toggle('invalid',!s); document.getElementById('xp-end').classList.toggle('invalid',!e);
+  if(!s||!e) bad='Enter the dates as dd/mm/yyyy.';
+  else if(e<s) bad='The end date is before the start date.';
+  const items=[];
+  document.querySelectorAll('#xp-rows .op-row').forEach(row=>{
+    const nm=row.querySelector('.xp-name').value.replace(/\s+/g,' ').trim(), amt=row.querySelector('.xp-amt'), raw=amt.value.trim();
+    const v=raw===''?null:parseMoney(raw);
+    amt.classList.toggle('invalid', raw!=='' && v===null);
+    if(raw!=='' && v===null){ bad=bad||'Amount not recognised. Try 1250, $1,250.00 or 1.2k.'; return; }
+    if(!v) return;
+    items.push({name:nm.slice(0,60), cents:Math.round(v*100), ...(row.querySelector('.xp-rec input').checked?{rec:true}:{})});
+  });
+  if(!bad && s && e && expCfg.kind==='plan') bad=expOverlap(expList(headings[expCfg.i],'plan'),s,e,expCfg.idx==null?-1:expCfg.idx);
+  return {s,e,items,bad};
+}
+function updateExpHint(){
+  if(!expCfg) return;
+  const hint=document.getElementById('xp-hint'), x=readExpPopup();
+  if(x.bad){ hint.className='op-hint warn'; hint.textContent=x.bad; return; }
+  const t=expSum(x.items), wd=workdaysInRange(parseDate(x.s),parseDate(x.e));
+  hint.className='op-hint';
+  hint.textContent = x.items.length
+    ? `Cost ${money2(t.cost)}: ${money2(t.rec)} recoverable (added to invoicing), ${money2(t.non)} non-recoverable. ${weeksText(x.s,x.e)}, ${wd} working day${wd!==1?'s':''}.`
+      +(expCfg.kind==='actual'?' Replaces any forecast expenses on these dates.':'')
+    : (expCfg.idx!=null?'No items: Apply removes this '+(expCfg.kind==='plan'?'bar.':'entry.'):'Add an item and amount. Tick Recoverable if it is invoiced on to the client.');
+}
+function commitExp(){
+  if(!expCfg) return;
+  const x=readExpPopup(); if(x.bad) return;
+  const h=headings[expCfg.i], list=expList(h,expCfg.kind);
+  if(expCfg.idx!=null){
+    if(!x.items.length) list.splice(expCfg.idx,1);
+    else Object.assign(list[expCfg.idx],{start:x.s,end:x.e,items:x.items},expCfg.kind==='actual'?{mode:rangeMode(x.s,x.e)}:{});
+  } else if(x.items.length){
+    list.push(expCfg.kind==='actual'?{start:x.s,end:x.e,mode:rangeMode(x.s,x.e),items:x.items}:{start:x.s,end:x.e,items:x.items});
+  }
+  list.sort((a,b)=>a.start<b.start?-1:a.start>b.start?1:0);
+  if(document.activeElement && document.activeElement.blur) document.activeElement.blur();
+  closeExpPopup(); refresh();
+}
+function removeExp(){
+  if(!expCfg || expCfg.idx==null) return;
+  expList(headings[expCfg.i],expCfg.kind).splice(expCfg.idx,1);
+  closeExpPopup(); refresh();
+}
+function closeExpPopup(){
+  const pop=document.getElementById('exp-popup'); if(!pop) return;
+  pop.classList.remove('visible');
+  if(expCfg && expCfg.ghost) expCfg.ghost.remove();
+  expCfg=null;
+}
+document.addEventListener('mousedown',e=>{
+  const pop=document.getElementById('exp-popup');
+  if(pop && pop.classList.contains('visible') && !pop.contains(e.target)) closeExpPopup();
+});
+
+// ── Menus
+let expCtx=null;
+function openExpItemMenu(e, i, kind, idx){
+  hideTooltip(); closeAllPopups();
+  const b=expList(headings[i],kind)[idx];
+  expCtx={i,kind,idx,x:e.clientX,y:e.clientY};
+  document.getElementById('ctx-title').textContent=`${kind==='plan'?'Forecast':'Actual'} expenses · ${fmtDisplay(b.start)} to ${fmtDisplay(b.end)}`;
+  showMenu(e,[
+    `<div class="ctx-item" onclick="expCtxEdit()">✎ Change these expenses…</div>`,
+    `<div class="ctx-item danger" onclick="expCtxRemove()">✕ Remove ${kind==='plan'?'this bar':'this entry'}</div>`]);
+}
+function openExpRowMenu(e, i, row){
+  e.preventDefault(); hideTooltip(); closeAllPopups();
+  const h=headings[i], mode=breakdownView, key=periodKey(dateAtX(e.clientX-row.getBoundingClientRect().left),mode), b=periodBounds(key,mode);
+  expCtx={i,b,x:e.clientX,y:e.clientY};
+  document.getElementById('ctx-title').textContent=`Expenses · ${periodName(key,mode,false)}`;
+  const plan=expList(h,'plan'), act=expList(h,'actual'), items=[];
+  if(!plan.some(x=>x.start<=b.end&&x.end>=b.start)) items.push(`<div class="ctx-item" onclick="expCtxAdd('plan')">＋ Add forecast expenses for this ${unitName(mode)}…</div>`);
+  items.push(`<div class="ctx-item" onclick="expCtxAdd('actual')">✎ ${act.some(a=>a.start===b.start&&a.end===b.end)?'Change':'Enter'} actual expenses for this ${unitName(mode)}…</div>`);
+  items.push(`<div class="ctx-item info">Bars on top: forecast expenses. Boxes beneath: actual expenses, which replace the forecast for their dates. Recoverable items are also invoiced.</div>`);
+  if(plan.length||act.length) items.push('<div class="ctx-sep"></div>',`<div class="ctx-item danger" onclick="expCtxClearAll()">✕ Remove all expenses for this heading</div>`);
+  showMenu(e,items);
+}
+function expCtxEdit(){ closeCtx(); if(!expCtx) return; const b=expList(headings[expCtx.i],expCtx.kind)[expCtx.idx]; openExpPopup({clientX:expCtx.x,clientY:expCtx.y},expCtx.i,expCtx.kind,expCtx.idx,b.start,b.end,null); }
+function expCtxRemove(){ closeCtx(); if(!expCtx) return; expList(headings[expCtx.i],expCtx.kind).splice(expCtx.idx,1); refresh(); }
+function expCtxAdd(kind){
+  closeCtx(); if(!expCtx) return;
+  const {i,b}=expCtx, list=expList(headings[i],kind);
+  const ai=kind==='actual'?list.findIndex(a=>a.start===b.start&&a.end===b.end):-1;
+  openExpPopup({clientX:expCtx.x,clientY:expCtx.y},i,kind,ai>=0?ai:null,b.start,b.end,null);
+}
+function expCtxClearAll(){ closeCtx(); if(!expCtx) return; headings[expCtx.i].expenses={plan:[],actual:[]}; refresh(); flashStatus('Expenses removed. Undo brings them back.'); }
+
+// Left panel: the Expenses row
+function leftExpenseRow(h, i, r, spec){
+  const sr=document.createElement('div');
+  sr.className='task-row tall exp-left';
+  sr.dataset.idx=i; sr.dataset.rk=spec.rk;
+  sr.style.height=spec.ht+'px';
+  const nP=expList(h,'plan').length, nA=expList(h,'actual').length, ex=r.ex;
+  const info = nP||nA ? [nP?`${nP} forecast`:'',nA?`${nA} actual`:''].filter(Boolean).join(' · ') : '<span style="opacity:.7">Drag on the row to add</span>';
+  const badge = ex.rec ? `<span class="sub-badge muted" title="Recoverable: invoiced on to the client (and a cost)">${money0(ex.rec)} rec</span>` : '';
+  const fee = (nP||nA) ? splitCell3(ex.cost, ex.costToDate, ex.costRem,
+      'Total expenses: recoverable and non-recoverable',
+      `Expenses to date: before today (${fmtDisplay(todayStr())}), actual where entered, otherwise forecast`,
+      'Expenses remaining: from today on') : '';
+  sr.innerHTML=`
+    <div class="heading-stripe" style="background:${h.color}"></div>
+    <div class="task-cell"></div><div class="task-cell"></div><div class="task-cell"></div>
+    <div class="task-cell" style="overflow:hidden"><div class="sub-info">${info}</div></div>
+    <div class="task-cell" style="overflow:hidden"><div class="sub-title">Expenses${badge}</div></div>
+    <div class="task-cell fee-cell">${fee}</div>
+    <div class="task-cell"></div>`;
+  sr.addEventListener('contextmenu',e=>{ e.preventDefault(); const row=document.querySelector(`#gantt-rows [data-rk="${i}e"]`); if(row) openExpRowMenu(e,i,row); });
+  return sr;
 }
 
 // ═══════════════════════════════════════════════════════
@@ -4776,7 +5308,7 @@ function buildWorkbook(){
   const C0=5;   // first period column (A-D table, E gap)
   const money=c=>Math.round(c)/100;
   // Period columns for the money tables (as on screen) and weeks for resourcing
-  const finMaps=[fc.totals,fc.remTotals,fc.actTotals,fc.resTotals];
+  const finMaps=[fc.totals,fc.remTotals,fc.actTotals,fc.resTotals,fc.expTotals,fc.recTotals];
   const wkHours=new Map(); fc.rows.forEach(r=>r.res.forEach(rc=>resourceCalc(rc.res,'weekly',today).periods.forEach((p,k)=>{ if(p.hours) wkHours.set(k,1); })));
   // In the weekly view both tables share one run of weeks, so a date sits in the same column
   const fin=keySpan(mode==='weekly'?finMaps.concat([wkHours]):finMaps,mode);
@@ -4811,14 +5343,16 @@ function buildWorkbook(){
     periodHeads(fin,mode,C0,['','Total','To date','Remaining']);
     sh.set(R,0,'Total projected profit',{b:true}); sh.set(R,1,money(t.profit),{b:true,fmt:$2,color:t.profit<0?'#DC2626':INK});
     sh.set(R,2,'',{}); sh.set(R,3,'',{}); R++;
-    sh.set(R,0,'Total invoicing less total resourcing cost',{i:true,color:FAINT,size:9}); R++;
-    t.cats.forEach(([name,tot,td,rem,per,box],n)=>{
+    sh.set(R,0,'Total invoicing less total cost (resourcing and expenses)',{i:true,color:FAINT,size:9}); R++;
+    t.cats.forEach(([name,tot,td,rem,per,box,sub],n)=>{
       const top=n===0?'top':null;
-      sh.set(R,0,name,{b:true,border:top});
-      sh.set(R,1,money(tot),{b:true,fmt:$2,border:top}); sh.set(R,2,money(td),{color:MUTED,fmt:$2,border:top}); sh.set(R,3,money(rem),{color:MUTED,fmt:$2,border:top});
+      // Sub-rows (what a category is made of) are indented, italic and grey
+      sh.set(R,0,name,sub?{i:true,color:MUTED,indent:1}:{b:true,border:top});
+      sh.set(R,1,money(tot),sub?{i:true,color:MUTED,fmt:$2}:{b:true,fmt:$2,border:top});
+      sh.set(R,2,money(td),{i:!!sub,color:sub?FAINT:MUTED,fmt:$2,border:sub?null:top}); sh.set(R,3,money(rem),{i:!!sub,color:sub?FAINT:MUTED,fmt:$2,border:sub?null:top});
       fin.forEach((k,j)=>{
         const v=per(k), past=isPast(k,mode), boxed=box&&box(k);
-        sh.set(R,C0+j,v?money(v):'',{fmt:$0,h:'right',color:past?MUTED:INK,fill:past?SOFT:null,border:boxed?'box':top});
+        sh.set(R,C0+j,v?money(v):'',{fmt:$0,h:'right',i:!!sub,color:sub?(past?FAINT:MUTED):past?MUTED:INK,fill:past?SOFT:null,border:boxed?'box':sub?null:top});
       });
       R++;
     });
@@ -4845,40 +5379,59 @@ function buildWorkbook(){
     weeks.forEach((k,j)=>{ const h=colTot.get(k)||0; sh.set(R,C0+j,h>1e-9?Math.round(h/hoursPerDay*100)/100:'',{b:true,fmt:D1,h:'right',fill:HEAD}); });
     R+=2;
   };
+  // Expense items: one row each, forecast then actual
+  const expenseTable=h=>{
+    ['Expense','Amount','Recoverable','Type'].forEach((t,c)=>sh.set(R,c,t,{b:true,fill:HEAD,h:c===0||c===2||c===3?'left':'right',border:'bottom'}));
+    sh.set(R,4,''); sh.set(R,C0,'Dates',{b:true,fill:HEAD,border:'bottom'}); R++;
+    [['plan','Forecast'],['actual','Actual']].forEach(([kind,label])=>(h.expenses[kind]||[]).forEach(b=>b.items.forEach(x=>{
+      sh.set(R,0,x.name||'Expense',{border:'bottom'}); sh.set(R,1,x.cents/100,{fmt:$2,border:'bottom'});
+      sh.set(R,2,x.rec?'Recoverable':'Non-recoverable',{color:x.rec?INK:MUTED,border:'bottom'}); sh.set(R,3,label,{color:MUTED,border:'bottom'});
+      sh.set(R,C0,`${fmtDisplay(b.start)} to ${fmtDisplay(b.end)}`,{color:MUTED}); R++;
+    })));
+    R++;
+  };
   const peopleOf=pps=>pps.map(pp=>({name:pp.res.name||pp.res.position||'(unnamed)', position:pp.res.name?pp.res.position:'', rate:null, total:pp.total, weeks:pp.weeks, over:pp.over}));
   const view=mode==='billing'?`billing period (${billingShort()})`:'week';
   // ── Title
   sh.set(R,0,projectTitle||'Fee forecast',{b:true,size:16,color:INK}); sh.height(R,26); R++;
   sh.set(R,0,`Exported ${fmtDisplay(today)} · money by ${view}, resourcing by week · to date means before ${fmtDisplay(today)} (shaded columns)`,{i:true,color:MUTED}); R++;
   // ── 1. FINANCIALS
-  section('FINANCIALS', 'All headings. Invoicing per period is the actual invoices plus the forecast still to invoice; boxed cells hold an actual invoice.');
-  const totInv=fc.actToDate+fc.remTotal, totRes=Math.round(fc.resToDate+fc.resRemaining);
-  moneyTable({profit:totInv-totRes, cats:[
+  section('FINANCIALS', 'All headings. Invoicing per period is the actual invoices, the forecast still to invoice and recoverable expenses; boxed cells hold an actual invoice. Cost is resourcing plus all expenses.');
+  const totCost=Math.round(fc.costToDate+fc.costRemaining);
+  moneyTable({profit:fc.invTotal-totCost, cats:[
     ['Budget', fc.budgetToDate+fc.budgetRemaining, fc.budgetToDate, fc.budgetRemaining, k=>fc.totals.get(k)||0],
-    ['Invoicing', totInv, fc.actToDate, fc.remTotal, k=>(fc.actTotals.get(k)||0)+(fc.remTotals.get(k)||0), k=>(fc.actTotals.get(k)||0)!==0],
-    ['Resourcing', totRes, fc.resToDate, fc.resRemaining, k=>Math.round(fc.resTotals.get(k)||0)]]});
+    ['Invoicing', fc.invTotal, fc.invTD, fc.invRem, k=>(fc.actTotals.get(k)||0)+(fc.remTotals.get(k)||0)+(fc.recTotals.get(k)||0), k=>(fc.actTotals.get(k)||0)!==0],
+    ['of which recoverable expenses', fc.expRec, fc.rows.reduce((a,r)=>a+r.ex.recToDate,0), fc.rows.reduce((a,r)=>a+r.ex.recRem,0), k=>fc.recTotals.get(k)||0, null, true],
+    ['Cost', totCost, fc.costToDate, fc.costRemaining, k=>Math.round(fc.costTotals.get(k)||0)],
+    ['Resourcing', Math.round(fc.resToDate+fc.resRemaining), fc.resToDate, fc.resRemaining, k=>Math.round(fc.resTotals.get(k)||0), null, true],
+    ['Expenses', fc.expToDate+fc.expRemaining, fc.expToDate, fc.expRemaining, k=>fc.expTotals.get(k)||0, null, true]]});
   // ── 2. RESOURCING
   const ex=excludedPeople();
   section('RESOURCING', `Days per week (${fmtNum(hoursPerDay)} hours a day), all headings. Red: more time than the week's working days.`+(ex.size?' People excluded from the schedule are left out.':''));
   daysTable(peopleOf(fc.people), ['Name','Position','','Total days']);
   // ── 3. DETAILED BREAKDOWN
-  section('DETAILED BREAKDOWN', 'Each heading: its figures, then its resources (days per week).');
+  section('DETAILED BREAKDOWN', 'Each heading: its figures, its resources (days per week), then its expenses.');
   fc.rows.forEach(r=>{
     const h=r.h, sp=headingSpan(h);
-    const inv=r.actToDate+r.remTotal, res=Math.round(r.resToDate+r.resRemaining);
+    const inv=r.invTotal, res=Math.round(r.costToDate+r.costRemaining);
     subTitle(`${h.name||'(unnamed heading)'}`, h.color);
     sh.set(R,0,[sp.start?`${fmtDisplay(sp.start)} to ${fmtDisplay(sp.end)}`:'No dated work', `${r.days} working days`, isHourly(h)?'Hourly rates':'Fixed fee', `Total fee ${money2(r.cents)}`].join(' · '),{i:true,color:MUTED}); R+=2;
-    if(!inv && !res && !(r.budgetToDate+r.budgetRemaining)){ sh.set(R,0,'No fee, invoices or resourcing entered.',{i:true,color:MUTED}); R+=2; return; }
+    if(!inv && !res && !(r.budgetToDate+r.budgetRemaining)){ sh.set(R,0,'No fee, invoices, resourcing or expenses entered.',{i:true,color:MUTED}); R+=2; return; }
+    const hasEx=hasExpenses(h);
     moneyTable({profit:inv-res, cats:[
       ['Budget', r.budgetToDate+r.budgetRemaining, r.budgetToDate, r.budgetRemaining, k=>(r.periods.get(k)||{cents:0}).cents],
-      ['Invoicing', inv, r.actToDate, r.remTotal, k=>{ const a=(r.act.get(k)||{cents:0}).cents, p=r.inv.get(k); return a+(p?p.freeCents:0); }, k=>!!(r.act.get(k)&&r.act.get(k).cents)],
-      ['Resourcing', res, r.resToDate, r.resRemaining, k=>Math.round((r.resPeriods.get(k)||{cents:0}).cents)]]});
+      ['Invoicing', inv, r.invTD, r.invRem, k=>{ const a=(r.act.get(k)||{cents:0}).cents, p=r.inv.get(k); return a+(p?p.freeCents+(p.rec||0):0); }, k=>!!(r.act.get(k)&&r.act.get(k).cents)]]
+      .concat(r.ex.rec?[['of which recoverable expenses', r.ex.rec, r.ex.recToDate, r.ex.recRem, k=>(r.ex.periods.get(k)||{rec:0}).rec, null, true]]:[])
+      .concat([['Cost', res, r.costToDate, r.costRemaining, k=>Math.round((r.costPeriods.get(k)||{cents:0}).cents)],
+        ['Resourcing', Math.round(r.resToDate+r.resRemaining), r.resToDate, r.resRemaining, k=>Math.round((r.resPeriods.get(k)||{cents:0}).cents), null, true]])
+      .concat(hasEx?[['Expenses', r.ex.cost, r.ex.costToDate, r.ex.costRem, k=>(r.ex.periods.get(k)||{cost:0}).cost, null, true]]:[])});
     const ppl=r.res.map(rc=>{
       const w=new Map(); let tot=0;
       resourceCalc(rc.res,'weekly',today).periods.forEach((p,k)=>{ if(p.hours){ w.set(k,p.hours); tot+=p.hours; } });
       return {name:(rc.res.name||rc.res.position||'(unnamed)')+(rc.res.schedule===false?' (not in schedule)':''), position:rc.res.name?rc.res.position:'', rate:+rc.res.rate||0, total:tot, weeks:w};
     }).filter(p=>p.total>0);
     if(r.res.length) daysTable(ppl, ['Resource','Position','Rate ($/hr)','Total days']);
+    if(hasEx) expenseTable(h);
   });
   const cols=[38,15,15,15,2].concat(Array(Math.max(0,nCols-C0)).fill(11));
   return xlsxBlob('Forecast', sh.xml(cols,{c:5}), S.xml());
