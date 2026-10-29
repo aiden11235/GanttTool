@@ -647,7 +647,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
         <div class="dt-foot"><span id="dt-status" class="dt-status"></span><button class="modal-btn primary" id="dt-copy" onclick="copyScheduleText()">Copy</button></div>
       </div>
       <div class="dt-pane">
-        <h2 style="margin-bottom:4px">Invoicing forecast</h2>
+        <h2 style="margin-bottom:4px">Invoicing</h2>
         <div id="di-sub" class="dt-sub"></div>
         <div id="di-text" class="dt-box" tabindex="0"></div>
         <div class="dt-foot"><span id="di-status" class="dt-status"></span><button class="modal-btn primary" id="di-copy" onclick="copyInvoiceText()">Copy</button></div>
@@ -5469,10 +5469,11 @@ async function exportExcel(){
 //  figure changes. Rates are per working week: a week shortened by a public
 //  holiday shows the same rate as a full one, and weeks with no working days
 //  (a shutdown) are skipped without breaking a block. Dates follow the
-//  "From 26 Oct - 30 Nov" style: each block ends on the Monday the next
-//  period starts. Someone who drops out shows 0.0 days/wk in the next block.
+//  "From 26 Oct - 29 Nov" style, inclusive: each block ends on the Sunday
+//  before the next one starts (1 - 7 Oct, then 8 - 14 Oct). Someone who drops out shows 0.0 days/wk in the next block.
 // ═══════════════════════════════════════════════════════
-function fmtShort(d){ const x=parseDate(d); return `${x.getDate()} ${x.toLocaleString('en-AU',{month:'short'})}`; }
+const MON3=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function fmtShort(d){ const x=parseDate(d); return `${x.getDate()} ${MON3[x.getMonth()]}`; }   // three letters always (the browser writes 'Sept')
 function fmtRate(dpw){
   if(dpw<=1e-9) return '0.0 days/wk';
   if(dpw < 1-1e-9){ const h=Math.round(dpw*hoursPerDay*10)/10; return `${h.toFixed(1)} hrs/wk`; }
@@ -5504,7 +5505,7 @@ function scheduleBlocks(){
     const prev=blocks[n-1], adj=prev && prev.nextMon>=b.start;
     b.lines=people.filter(pp=>b.rates.has(pp.key) || (adj && prev.rates.has(pp.key)))
       .map(pp=>({name:personName(pp.res), text:fmtRate(b.rates.get(pp.key)||0)}));
-    b.to=b.nextMon;
+    b.to=fmt(addDay(b.nextMon,-1));   // inclusive: ends the Sunday before the next block starts
   });
   return {blocks, start};
 }
@@ -5529,33 +5530,45 @@ function openScheduleExport(){
 }
 function closeScheduleExport(){ document.getElementById('dt-modal').style.display='none'; }
 
-// Invoicing forecast, for the right-hand pane: from the billing period that
-// holds today on, what each heading is still forecast to invoice in each
-// period (the fee still to invoice plus recoverable expenses). Actual
-// invoices already entered are not repeated. Periods with nothing to
-// invoice are left out; each period ends with a bold total.
+// Invoicing, for the right-hand pane, in date order:
+//  - invoiced: every billing period holding actual invoices (issued or
+//    confirmed), each heading's invoices in it, tagged "(invoiced)";
+//  - forecast: from the billing period that holds today on, what each
+//    heading is still forecast to invoice (fee still to invoice plus
+//    recoverable expenses).
+// A period with both gets two blocks, the invoiced one first. Zero lines and
+// empty periods are left out; each block ends with a bold total.
 function invoiceBlocks(){
   const fc=buildForecast('billing'), today=todayStr(), keys=new Set();
-  fc.rows.forEach(r=>r.inv.forEach((p,k)=>{ if(Math.round(p.freeCents+(p.rec||0))) keys.add(k); }));
-  return [...keys].sort().filter(k=>periodBounds(k,'billing').end>=today).map(k=>{
-    const b=periodBounds(k,'billing');
-    const lines=fc.rows.map(r=>{ const p=r.inv.get(k); return {name:r.h.name||'(unnamed heading)', cents:p?Math.round(p.freeCents+(p.rec||0)):0}; }).filter(l=>l.cents);
-    return {key:k, start:b.start, end:b.end, lines, total:lines.reduce((a,l)=>a+l.cents,0)};
+  fc.rows.forEach(r=>{
+    r.inv.forEach((p,k)=>{ if(Math.round(p.freeCents+(p.rec||0))) keys.add(k); });
+    r.act.forEach((p,k)=>{ if(Math.round(p.cents)) keys.add(k); });
   });
+  const out=[];
+  [...keys].sort().forEach(k=>{
+    const b=periodBounds(k,'billing');
+    const block=(invoiced,val)=>{
+      const lines=fc.rows.map(r=>({name:r.h.name||'(unnamed heading)', cents:val(r)})).filter(l=>l.cents);
+      if(lines.length) out.push({key:k, start:b.start, end:b.end, invoiced, lines, total:lines.reduce((a,l)=>a+l.cents,0)});
+    };
+    block(true, r=>{ const p=r.act.get(k); return p?Math.round(p.cents):0; });
+    if(b.end>=today) block(false, r=>{ const p=r.inv.get(k); return p?Math.round(p.freeCents+(p.rec||0)):0; });
+  });
+  return out;
 }
 function invoiceText(){
   const blocks=invoiceBlocks();
-  const head=b=>`${fmtShort(b.start)} - ${fmtShort(b.end)}:`;
-  const plain=blocks.map(b=>[head(b)].concat(b.lines.map(l=>`${l.name}: ${money2(l.cents)}`),[`Total forecast invoice: ${money2(b.total)}`]).join('\n')).join('\n\n');
+  const head=b=>`${fmtShort(b.start)} - ${fmtShort(b.end)}${b.invoiced?' (invoiced)':''}:`;
+  const plain=blocks.map(b=>[head(b)].concat(b.lines.map(l=>`${l.name}: ${money2(l.cents)}`),[`Total: ${money2(b.total)}`]).join('\n')).join('\n\n');
   const html=blocks.map(b=>`<p><u>${escHtml(head(b))}</u></p>`+b.lines.map(l=>`<p>${escHtml(l.name)}: ${money2(l.cents)}</p>`).join('')
-    +`<p><b>Total forecast invoice: ${money2(b.total)}</b></p>`).join('<p class="dt-gap"><br></p>');
-  return {plain, html, n:blocks.length};
+    +`<p><b>Total: ${money2(b.total)}</b></p>`).join('<p class="dt-gap"><br></p>');
+  return {plain, html, n:blocks.length, nInv:blocks.filter(b=>b.invoiced).length};
 }
 function fillInvoiceExport(){
   const t=invoiceText(), anyRec=currentForecast?currentForecast.expRec:0;
   document.getElementById('di-sub').textContent = t.n
-    ? `Forecast invoice per billing period (${billingShort()}), from the period that includes ${fmtDisplay(todayStr())}. The fee still to invoice${anyRec?' plus recoverable expenses':''}; actual invoices already entered are not included.`
-    : 'Nothing left to invoice from this billing period on.';
+    ? `Invoices per billing period (${billingShort()}). Periods marked (invoiced) are the actual invoices entered; the rest is the forecast from the period that includes ${fmtDisplay(todayStr())}: the fee still to invoice${anyRec?' plus recoverable expenses':''}.`
+    : 'No invoices entered and nothing left to invoice.';
   document.getElementById('di-text').innerHTML = t.n ? t.html : '<p style="color:#9e9c97">Nothing to show. Enter total fees on the headings.</p>';
   document.getElementById('di-status').textContent='';
 }
