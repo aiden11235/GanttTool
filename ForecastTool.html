@@ -422,10 +422,18 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
 .modal-btn.primary{background:#3b82f6;border-color:#3b82f6;color:#fff;font-weight:600}
 #msg-body{font-size:12px;color:#4a4842;line-height:1.55;margin-bottom:16px;max-height:50vh;overflow:auto}
 #msg-body ul{padding-left:18px;margin:6px 0}
-#dt-text{font-family:var(--font);font-size:13px;line-height:1.5;color:#1a1a18;background:#fff;border:1px solid #e0ddd8;border-radius:4px;padding:10px 12px;max-height:55vh;overflow:auto;user-select:text;white-space:normal}
-#dt-text:focus{outline:2px solid var(--accent-light)}
-#dt-text p{margin:0}
-#dt-text .dt-gap{height:1.5em}
+/* Export DT: resourcing schedule and invoicing forecast side by side */
+.dt-card{width:920px;max-width:calc(100vw - 32px)}
+.dt-panes{display:grid;grid-template-columns:1fr 1fr;column-gap:16px}
+.dt-pane{display:grid;grid-row:span 4;grid-template-rows:subgrid;min-width:0}
+@media (max-width:760px){ .dt-panes{grid-template-columns:1fr} }
+.dt-sub{font-size:11px;color:#6b6860;margin-bottom:10px;line-height:1.45}
+.dt-box{flex:1;font-family:var(--font);font-size:13px;line-height:1.5;color:#1a1a18;background:#fff;border:1px solid #e0ddd8;border-radius:4px;padding:10px 12px;height:55vh;overflow:auto;user-select:text;white-space:normal}
+.dt-box:focus{outline:2px solid var(--accent-light)}
+.dt-box p{margin:0}
+.dt-box .dt-gap{height:1.5em}
+.dt-foot{display:flex;align-items:center;gap:8px;margin-top:8px}
+.dt-status{flex:1;font-size:11px;color:#6b6860;min-height:16px}
 #msg-body .muted{color:#6b6860}
 
 ::-webkit-scrollbar{width:6px;height:6px}
@@ -491,7 +499,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
   <button class="tb-btn tb-btn-ghost" onclick="reloadJSON()" title="Read the programme JSON again now, to pick up changes just saved in the Gantt tool. Your fees and invoices on screen are kept.">↻ Reload JSON</button>
   <button id="save-btn" class="tb-btn tb-btn-ghost" onclick="exportJSON()" title="Save the fees and actual invoices back into the programme JSON, the same file the Gantt tool uses">Save JSON</button>
   <button class="tb-btn tb-btn-ghost" onclick="exportExcel()" style="border-color:#10b981;color:#10b981" title="Excel workbook: financials and resourcing for the project, then for each heading. Money by week or billing period as shown on screen; resourcing in days per week.">Export Excel</button>
-  <button class="tb-btn tb-btn-ghost" onclick="openScheduleExport()" style="border-color:#a78bfa;color:#a78bfa" title="Written summary of future resourcing, days per week per person, ready to copy into an email">Export DT</button>
+  <button class="tb-btn tb-btn-ghost" onclick="openScheduleExport()" style="border-color:#a78bfa;color:#a78bfa" title="Written summaries ready to copy into an email: future resourcing (days per week per person) and the invoicing forecast by billing period">Export DT</button>
   <button class="tb-btn tb-btn-ghost" onclick="openPDFModal()" style="border-color:#f59e0b;color:#f59e0b">⬇ PDF</button>
   <button class="tb-btn tb-btn-ghost" onclick="openImageModal()" style="border-color:#0ea5e9;color:#0ea5e9">🖼 Image</button>
   <div style="flex:1"></div>
@@ -630,14 +638,23 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
 
 <!-- Export DT: written resourcing summary -->
 <div id="dt-modal" class="modal-bg">
-  <div class="modal-card" style="width:460px">
-    <h2 style="margin-bottom:4px">Resourcing schedule</h2>
-    <div id="dt-sub" style="font-size:11px;color:#6b6860;margin-bottom:10px;line-height:1.45"></div>
-    <div id="dt-text" tabindex="0"></div>
-    <div id="dt-status" style="font-size:11px;color:#6b6860;min-height:16px;margin:8px 0"></div>
-    <div style="display:flex;gap:8px;justify-content:flex-end">
+  <div class="modal-card dt-card">
+    <div class="dt-panes">
+      <div class="dt-pane">
+        <h2 style="margin-bottom:4px">Resourcing schedule</h2>
+        <div id="dt-sub" class="dt-sub"></div>
+        <div id="dt-text" class="dt-box" tabindex="0"></div>
+        <div class="dt-foot"><span id="dt-status" class="dt-status"></span><button class="modal-btn primary" id="dt-copy" onclick="copyScheduleText()">Copy</button></div>
+      </div>
+      <div class="dt-pane">
+        <h2 style="margin-bottom:4px">Invoicing forecast</h2>
+        <div id="di-sub" class="dt-sub"></div>
+        <div id="di-text" class="dt-box" tabindex="0"></div>
+        <div class="dt-foot"><span id="di-status" class="dt-status"></span><button class="modal-btn primary" id="di-copy" onclick="copyInvoiceText()">Copy</button></div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px">
       <button class="modal-btn" onclick="closeScheduleExport()">Close</button>
-      <button class="modal-btn primary" id="dt-copy" onclick="copyScheduleText()">Copy</button>
     </div>
   </div>
 </div>
@@ -5506,13 +5523,47 @@ function openScheduleExport(){
     : 'No resourcing from this week on.';
   document.getElementById('dt-text').innerHTML = t.n ? t.html : '<p style="color:#9e9c97">Nothing to show. Add resources and bars of time under the headings.</p>';
   document.getElementById('dt-status').textContent='';
+  fillInvoiceExport();
   document.getElementById('dt-modal').style.display='flex';
   document.getElementById('dt-copy').focus();
 }
 function closeScheduleExport(){ document.getElementById('dt-modal').style.display='none'; }
-// Copies with the underlining (for email) and as plain text (for anything else)
-async function copyScheduleText(){
-  const t=scheduleText(), st=document.getElementById('dt-status');
+
+// Invoicing forecast, for the right-hand pane: from the billing period that
+// holds today on, what each heading is still forecast to invoice in each
+// period (the fee still to invoice plus recoverable expenses). Actual
+// invoices already entered are not repeated. Periods with nothing to
+// invoice are left out; each period ends with a bold total.
+function invoiceBlocks(){
+  const fc=buildForecast('billing'), today=todayStr(), keys=new Set();
+  fc.rows.forEach(r=>r.inv.forEach((p,k)=>{ if(Math.round(p.freeCents+(p.rec||0))) keys.add(k); }));
+  return [...keys].sort().filter(k=>periodBounds(k,'billing').end>=today).map(k=>{
+    const b=periodBounds(k,'billing');
+    const lines=fc.rows.map(r=>{ const p=r.inv.get(k); return {name:r.h.name||'(unnamed heading)', cents:p?Math.round(p.freeCents+(p.rec||0)):0}; }).filter(l=>l.cents);
+    return {key:k, start:b.start, end:b.end, lines, total:lines.reduce((a,l)=>a+l.cents,0)};
+  });
+}
+function invoiceText(){
+  const blocks=invoiceBlocks();
+  const head=b=>`${fmtShort(b.start)} - ${fmtShort(b.end)}:`;
+  const plain=blocks.map(b=>[head(b)].concat(b.lines.map(l=>`${l.name}: ${money2(l.cents)}`),[`Total forecast invoice: ${money2(b.total)}`]).join('\n')).join('\n\n');
+  const html=blocks.map(b=>`<p><u>${escHtml(head(b))}</u></p>`+b.lines.map(l=>`<p>${escHtml(l.name)}: ${money2(l.cents)}</p>`).join('')
+    +`<p><b>Total forecast invoice: ${money2(b.total)}</b></p>`).join('<p class="dt-gap"><br></p>');
+  return {plain, html, n:blocks.length};
+}
+function fillInvoiceExport(){
+  const t=invoiceText(), anyRec=currentForecast?currentForecast.expRec:0;
+  document.getElementById('di-sub').textContent = t.n
+    ? `Forecast invoice per billing period (${billingShort()}), from the period that includes ${fmtDisplay(todayStr())}. The fee still to invoice${anyRec?' plus recoverable expenses':''}; actual invoices already entered are not included.`
+    : 'Nothing left to invoice from this billing period on.';
+  document.getElementById('di-text').innerHTML = t.n ? t.html : '<p style="color:#9e9c97">Nothing to show. Enter total fees on the headings.</p>';
+  document.getElementById('di-status').textContent='';
+}
+async function copyInvoiceText(){ await copyDTText(invoiceText(), 'di-text', 'di-status'); }
+// Copies with the underlining and bold (for email) and as plain text (for anything else)
+async function copyScheduleText(){ await copyDTText(scheduleText(), 'dt-text', 'dt-status'); }
+async function copyDTText(t, boxId, statusId){
+  const st=document.getElementById(statusId);
   const html=`<div style="font-family:Arial,sans-serif;font-size:11pt">${t.html.replace(/<p class="dt-gap"><br><\/p>/g,'<p><br></p>').replace(/<p>/g,'<p style="margin:0">')}</div>`;
   try{
     if(window.ClipboardItem && navigator.clipboard && navigator.clipboard.write){
@@ -5521,7 +5572,7 @@ async function copyScheduleText(){
     st.textContent='✓ Copied. Paste into an email or document.';
   }catch(e){
     // Fallback: select the text and copy it as shown
-    const r=document.createRange(); r.selectNodeContents(document.getElementById('dt-text'));
+    const r=document.createRange(); r.selectNodeContents(document.getElementById(boxId));
     const sel=window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
     let ok=false; try{ ok=document.execCommand('copy'); }catch(x){}
     st.textContent = ok ? '✓ Copied.' : 'Select the text above and press Ctrl+C to copy it.';
