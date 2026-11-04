@@ -338,6 +338,32 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
 /* Override entry popup */
 #ovr-popup{position:fixed;z-index:900;background:#fff;border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,.22);padding:12px;width:290px;display:none;font-family:var(--font)}
 #ovr-popup.visible{display:block}
+#msi-popup{position:fixed;z-index:900;background:#fff;border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,.22);padding:12px;width:330px;display:none;font-family:var(--font)}
+#msi-popup.visible{display:block}
+#msi-popup .op-title{font-size:12px;font-weight:700;color:var(--text);margin-bottom:2px}
+#msi-popup .op-sub{font-size:11px;color:var(--text-muted);margin-bottom:8px}
+#msi-popup .msi-row{margin-bottom:8px}
+#msi-popup .msi-name{font-size:12px;font-weight:600;color:var(--text);margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#msi-popup .msi-input{display:flex;gap:6px;align-items:center}
+#msi-popup .msi-val{flex:1;min-width:0;padding:6px 9px;border:1px solid #c8c4bc;border-radius:4px;font-size:13px;font-family:var(--font-mono);text-align:right}
+#msi-popup .msi-val:focus{outline:none;border-color:#3b82f6}
+#msi-popup .msi-val.invalid{border-color:#dc2626;background:#fee2e2}
+#msi-popup .hp-units{display:flex;border:1px solid #c8c4bc;border-radius:4px;overflow:hidden;flex:none}
+#msi-popup .hp-units button{border:none;background:#fff;color:var(--text-muted);font-size:11px;font-family:var(--font);padding:6px 8px;cursor:pointer;white-space:nowrap}
+#msi-popup .hp-units button+button{border-left:1px solid #c8c4bc}
+#msi-popup .msi-units button.active{background:var(--accent);color:#fff}
+#msi-popup .op-hint{font-size:11px;color:var(--text-muted);line-height:1.45;margin:8px 0 10px;min-height:32px}
+#msi-popup .op-hint.warn{color:#b45309}
+.bar-milestone.ms-click,.ms-label.ms-click{cursor:pointer}
+.bar-milestone.ms-inv::after{content:'';position:absolute;left:50%;top:-3px;width:5px;height:5px;margin-left:-2.5px;border-radius:50%;background:#16a34a;box-shadow:0 0 0 1.5px #fff}
+#ovr-popup.has-pct{width:340px}
+#ovr-popup .op-pct{width:58px;flex:none}
+#ovr-popup:not(.has-pct) .op-pct{display:none}
+#ovr-popup .op-head{display:flex;gap:6px;font-size:10px;color:var(--text-faint);margin-bottom:3px}
+#ovr-popup .op-head span:nth-child(1){width:96px}
+#ovr-popup .op-head span:nth-child(2){width:58px;text-align:right}
+#ovr-popup .op-head span:nth-child(3){flex:1;text-align:right;padding-right:24px}
+#ovr-popup:not(.has-pct) .op-head{display:none}
 #exp-popup{position:fixed;z-index:900;background:#fff;border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,.22);padding:12px;width:380px;display:none;font-family:var(--font)}
 #exp-popup.visible{display:block}
 #exp-popup .op-title{font-size:12px;font-weight:700;color:var(--text);margin-bottom:2px}
@@ -457,6 +483,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
   body.printing #ctx-menu,
   body.printing #ovr-popup,
   body.printing #exp-popup,
+  body.printing #msi-popup,
   body.printing #hrs-popup,
   body.printing .res-hover,
   body.printing #settings-modal,
@@ -590,11 +617,25 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
 <div id="ovr-popup">
   <div class="op-title" id="op-title"></div>
   <div class="op-sub" id="op-sub"></div>
+  <div class="op-head"><span>Label</span><span title="Percentage of the total fee complete with this invoice">% complete</span><span>Amount</span></div>
   <div id="op-rows"></div>
   <div class="op-hint" id="op-hint"></div>
   <div style="display:flex;gap:8px;justify-content:flex-end">
     <button class="modal-btn" onclick="closeOverridePopup()">Cancel</button>
     <button class="modal-btn primary" onclick="commitOverride()">Apply</button>
+  </div>
+</div>
+
+<!-- Invoicing milestone: % complete or $ complete of the fee by a programme milestone -->
+<div id="msi-popup">
+  <div class="op-title" id="msi-title"></div>
+  <div class="op-sub" id="msi-sub"></div>
+  <div id="msi-rows"></div>
+  <div class="op-hint" id="msi-hint"></div>
+  <div style="display:flex;gap:8px;justify-content:flex-end">
+    <button class="modal-btn" id="msi-clear" onclick="clearMsi()" style="margin-right:auto;color:var(--bar-crit)">Clear</button>
+    <button class="modal-btn" onclick="closeMsiPopup()">Cancel</button>
+    <button class="modal-btn primary" onclick="commitMsi()">Apply</button>
   </div>
 </div>
 
@@ -1071,6 +1112,7 @@ function readForecastProp(f){
     budgetFrom: sanitiseBudgetFrom(f.budgetFrom),
     resources: sanitiseResources(f.resources),
     expenses: sanitiseExpenses(f.expenses),
+    invMs: sanitiseInvMs(f.invMilestones),
     savedAt: typeof f.savedAt==='string' ? f.savedAt : ''
   };
 }
@@ -1146,6 +1188,46 @@ function copyExpenses(e){
   return {plan:(e.plan||[]).map(b=>({start:b.start,end:b.end,items:items(b.items)})),
           actual:(e.actual||[]).map(b=>({start:b.start,end:b.end,mode:b.mode,items:items(b.items)}))};
 }
+// Invoicing milestones (fixed-fee headings): a programme milestone (by its
+// task id, so it follows the programme's date) with how much of the fee is
+// invoiced in total by that date, as a percentage or as a dollar sum.
+//   invMilestones: [{id, pct} | {id, cents}]
+function sanitiseInvMs(list){
+  const seen=new Set();
+  return (Array.isArray(list)?list:[]).filter(x=>x&&x.id!=null&&(isFinite(+x.pct)&&x.pct!=null||isFinite(+x.cents)&&x.cents!=null))
+    .filter(x=>!seen.has(String(x.id))&&seen.add(String(x.id)))
+    .map(x=>x.pct!=null&&isFinite(+x.pct) ? {id:x.id, pct:Math.min(100,Math.max(0,Math.round(+x.pct*10)/10))} : {id:x.id, cents:Math.max(0,Math.round(+x.cents))});
+}
+function copyInvMs(list){ return (list||[]).map(x=>x.pct!=null?{id:x.id,pct:x.pct}:{id:x.id,cents:x.cents}); }
+function invMsOf(h,id){ return (h.invMs||[]).find(x=>String(x.id)===String(id))||null; }
+// The milestone targets that apply: on a programme milestone that still
+// exists, with a date. Value = cumulative cents (a % of the fee, or the sum
+// capped at the fee). Sorted by date.
+function invMsPoints(h, C){
+  const byId=new Map((h.milestones||[]).map(m=>[String(m.id),m]));
+  return (h.invMs||[]).map(x=>{ const m=byId.get(String(x.id)); if(!m||!m.date) return null;
+      const v=x.pct!=null?Math.round(C*x.pct/100):Math.min(C,x.cents);
+      return {id:x.id, name:m.name, date:m.date, major:m.major, value:v, pct:C?v/C*100:0, set:x}; })
+    .filter(Boolean).sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0);
+}
+// Cumulative target per working day: 0 before the heading starts, each
+// milestone's value at the end of its date, 100% on the last working day,
+// rising evenly over the working days between (progress claims).
+function invMsCurve(days, C, points){
+  const N=days.length, pos=d=>{ let n=0; while(n<N && days[n]<=d) n++; return n; };
+  const knots=[[0,0]];
+  let nonMono=false, run=0;
+  points.forEach(p=>{ const v=Math.max(run,p.value); if(p.value<run) nonMono=true; run=v; knots.push([pos(p.date),v]); });
+  knots.push([N,Math.max(run,C)]);
+  const T=new Map();
+  for(let i=1;i<=N;i++){
+    let k=0; while(k<knots.length-1 && knots[k+1][0]<i) k++;
+    const [x0,y0]=knots[k], [x1,y1]=knots[Math.min(k+1,knots.length-1)];
+    const y = x1===x0 ? y1 : y0+(y1-y0)*(i-x0)/(x1-x0);
+    T.set(days[i-1], Math.round(Math.min(C,y)));
+  }
+  return {T, nonMono};
+}
 function hasExpenses(h){ const e=h.expenses; return !!(e&&((e.plan||[]).length||(e.actual||[]).length)); }
 function expSum(items){ let cost=0, rec=0; (items||[]).forEach(x=>{ cost+=x.cents; if(x.rec) rec+=x.cents; }); return {cost, rec, non:cost-rec}; }
 // Each forecast bar and actual box is spread evenly over its working days
@@ -1194,10 +1276,11 @@ function applyFigures(h, f){
   h.basis=f.basis==='hourly'?'hourly':'fixed';
   h.budgetFrom=copyBudgetFrom(f.budgetFrom);
   h.expenses=copyExpenses(f.expenses);
+  h.invMs=copyInvMs(f.invMs);
   h.color=h.fcColor||h.progColor;
 }
 function figuresOf(h){
-  return {fee:h.fee||0, basis:h.basis==='hourly'?'hourly':'fixed', budgetFrom:copyBudgetFrom(h.budgetFrom), actuals:(h.actuals||[]).map(a=>({...a})), resources:copyResources(h.resources), expenses:copyExpenses(h.expenses), fcColor:h.fcColor||null,
+  return {fee:h.fee||0, basis:h.basis==='hourly'?'hourly':'fixed', budgetFrom:copyBudgetFrom(h.budgetFrom), actuals:(h.actuals||[]).map(a=>({...a})), resources:copyResources(h.resources), expenses:copyExpenses(h.expenses), invMs:copyInvMs(h.invMs), fcColor:h.fcColor||null,
           order:(h.order??null), excluded:!!h.excluded, savedAt:h.savedAt||''};
 }
 // What gets written into the file for a heading, or null when there is
@@ -1208,6 +1291,7 @@ function forecastPayload(h){
   if((h.budgetFrom||[]).length) p.budgetFrom=copyBudgetFrom(h.budgetFrom);
   if((h.resources||[]).length) p.resources=copyResources(h.resources);
   if(hasExpenses(h)) p.expenses=copyExpenses(h.expenses);
+  if((h.invMs||[]).length) p.invMilestones=copyInvMs(h.invMs);
   if(h.fcColor) p.color=h.fcColor;
   if(h.order!=null) p.order=h.order;
   if(h.excluded) p.excluded=true;
@@ -1216,7 +1300,7 @@ function forecastPayload(h){
   if(!isDefaultBilling(billing)) p.billing={...billing};
   if(hoursPerDay!==HPD_DEFAULT) p.hoursPerDay=hoursPerDay;
   if(utilisation!==UTIL_DEFAULT) p.utilisation=utilisation;
-  if(!p.fee && !p.actuals.length && !p.resources && !p.color && p.order==null && !p.excluded && !p.billing && !p.hoursPerDay && !p.basis && !p.budgetFrom && !p.expenses && p.utilisation==null) return null;
+  if(!p.fee && !p.actuals.length && !p.resources && !p.color && p.order==null && !p.excluded && !p.billing && !p.hoursPerDay && !p.basis && !p.budgetFrom && !p.expenses && !p.invMilestones && p.utilisation==null) return null;
   return p;
 }
 
@@ -1488,7 +1572,10 @@ function allocateHeading(h){
   const actAt=new Map();                  // date -> [actual index] (invoice dates)
   const actShares=[];                     // per actual: Map {invoice date -> cents}
   let actualSum=0;
-  const invDays = caps.length ? allDays : days;
+  // Invoicing milestones drive the invoice forecast on their own; captured
+  // budget periods then shape the budget only, so the two do not mix.
+  const msPts=C>0 ? invMsPoints(h,C) : [];
+  const invDays = caps.length && !msPts.length ? allDays : days;
   (h.actuals||[]).forEach((a,ai)=>{
     actualSum+=a.cents;
     const sh=new Map([[actualLumpDate(a), a.cents]]);
@@ -1504,14 +1591,46 @@ function allocateHeading(h){
   const R=C-actualSum;                    // still to invoice, spread over free days
   // With captured budget periods the forecast follows the budget's shape
   // (pro rata to each day's budget); otherwise equally, as before.
-  const w = caps.length ? free.map(d=>budget.get(d)||0) : null;
-  const useW = w && w.every(x=>x>=0) && w.reduce((a,b)=>a+b,0)>0;
-  spreadCents(R,free,useW?w:null).forEach((v,d)=>inv.set(d,(inv.get(d)||0)+v));
+  let ms=null;
+  if(msPts.length && free.length && R>=0){
+    // Progress claims: each free day invoices what the milestone curve has
+    // reached, less everything invoiced so far (actual invoices count on
+    // their invoice date). Behind the curve catches up; ahead waits.
+    const {T, nonMono}=invMsCurve(days, C, msPts);
+    const lumps=(h.actuals||[]).map(a=>({d:actualLumpDate(a),c:a.cents})).sort((a,b)=>a.d<b.d?-1:a.d>b.d?1:0);
+    const fset=new Set(free); let S=0, li=0, left=R, lastFree=null;
+    days.forEach(d=>{
+      while(li<lumps.length && lumps[li].d<=d){ S+=lumps[li].c; li++; }
+      if(!fset.has(d)) return;
+      const c=Math.max(0, Math.min(left, (T.get(d)||0)-S));
+      inv.set(d,(inv.get(d)||0)+c); S+=c; left-=c; lastFree=d;
+    });
+    if(left && lastFree) inv.set(lastFree,(inv.get(lastFree)||0)+left);
+    ms={points:msPts, nonMono};
+  } else {
+    const w = caps.length ? free.map(d=>budget.get(d)||0) : null;
+    const useW = w && w.every(x=>x>=0) && w.reduce((a,b)=>a+b,0)>0;
+    spreadCents(R,free,useW?w:null).forEach((v,d)=>inv.set(d,(inv.get(d)||0)+v));
+    if(msPts.length) ms={points:msPts, nonMono:false, unused:true};
+  }
   // Nothing left to spread it over: the Invoiced row cannot hit the fee.
   const imbalance = free.length ? 0 : R;
   return {days, C, N, budget, budgetTotal, hasCaps:caps.length>0, capSum, budgetGap, budgetNeg, Rb,
-          inv, lockedBy, actAt, actShares, free, R, freeDays:free.length, imbalance, actualSum};
+          inv, lockedBy, actAt, actShares, free, R, freeDays:free.length, imbalance, actualSum, ms};
 }
+// Share of the fee invoiced (actual plus forecast) by the end of a date
+function invPctBy(a, date){
+  if(!a.C) return null;
+  let c=0; a.inv.forEach((v,d)=>{ if(d<=date) c+=v; });
+  return c/a.C*100;
+}
+// Share of the fee covered by actual invoices dated on or before a date
+function actPctBy(h, a, date){
+  if(!a.C) return null;
+  let c=0; (h.actuals||[]).forEach(x=>{ if(actualLumpDate(x)<=date) c+=x.cents; });
+  return c/a.C*100;
+}
+function fmtPct(v){ return v==null?'':`${(Math.round(v*10)/10).toFixed(1).replace(/\.0$/,'')}%`; }
 
 // ═══════════════════════════════════════════════════════
 //  RESOURCING
@@ -1930,7 +2049,7 @@ function renderLeft() {
       <div class="task-cell" style="overflow:hidden">
         <div class="heading-name" title="${escHtml(h.name)}">${escHtml(h.name)||'<span style="opacity:.5">(unnamed heading)</span>'}</div>
       </div>
-      <div class="task-cell">${(()=>{ const ms=h.milestones||[], nM=ms.filter(m=>m.major).length; return ms.length?`<span class="ms-count" title="Milestones from the programme, shown on the heading bar">◆ ${ms.length} milestone${ms.length!==1?'s':''}${nM?` · ${nM} major`:''}</span>`:''; })()}</div>
+      <div class="task-cell">${(()=>{ const ms=h.milestones||[], nM=ms.filter(m=>m.major).length; const nI=ms.filter(m=>invMsOf(h,m.id)).length; return ms.length?`<span class="ms-count" title="Milestones from the programme, shown on the heading bar. Click one on the chart to set an invoicing milestone.">◆ ${ms.length} milestone${ms.length!==1?'s':''}${nM?` · ${nM} major`:''}${nI?` · ${nI} invoicing`:''}</span>`:''; })()}</div>
       <div class="task-cell fee-cell hfee"><div class="hfee-line">${isHourly(h)
         ? `<i class="fee-cap" title="Hourly rates heading">Hourly</i>
         <input class="fee-input derived" type="text" readonly tabindex="-1" data-idx="${i}" value="${money2(C)}" style="color:${h.color}"
@@ -2570,6 +2689,7 @@ function drawActualTags(row, r, map, mode){
       return `<strong>${escHtml(h.name)}</strong><br>${escHtml(a.label||'Actual invoice')} <strong>${money2(a.cents)}</strong>`
         +`<br>For ${fmtDisplay(a.start)} to ${fmtDisplay(a.end)}`
         +`<br>Dated ${fmtDisplay(actualLumpDate(a))}, counted in ${escHtml(periodName(k,mode,true))}`
+        +(r.a.C&&!r.a.hourly?`<br>Brings the fee to <strong>${fmtPct(actPctBy(h,r.a,actualLumpDate(a)))} complete</strong>`:'')
         +`<br><span style="opacity:.6;font-style:italic">Click to change, drag to move, drag the ends to stretch (snaps to weeks; Shift for days, Ctrl for periods), right-click for options</span>`;
     });
     row.appendChild(box);
@@ -2595,10 +2715,12 @@ function labelTip(r,key,mode,kind,p){
   }
   if(kind==='b'){
     html+=`<br>${p.days} of ${r.days} working days`
-      +`<br><strong>${money2(p.cents)}</strong> <span style="opacity:.7">(${(C?p.cents/C*100:0).toFixed(1)}% of ${money2(C)})</span>`;
+      +`<br><strong>${money2(p.cents)}</strong>`;
+    if(C){ let cum=0; r.a.budget.forEach((v,d)=>{ if(d<=b.end) cum+=v; }); html+=`<br>${fmtPct(cum/C*100)} complete by the end of this ${unitName(mode)} <span style="opacity:.7">(of the ${money2(C)} fee)</span>`; }
     return html+`<br><span style="opacity:.6;font-style:italic">Actual invoices go on the Invoicing row</span>`;
   }
   html+=`<br><strong>${money2(p.freeCents+(p.rec||0))}</strong> still to be invoiced`;
+  if(r.a.C && !r.a.hourly) html+=`<br>${fmtPct(invPctBy(r.a,b.end))} complete by the end of this ${unitName(mode)}, counting actual and forecast invoices${r.a.ms&&!r.a.ms.unused?' <span style="opacity:.75">(following the invoicing milestones)</span>':''}`;
   if(p.rec) html+=`<br><span style="opacity:.75">Fee ${money2(p.freeCents)} + recoverable expenses ${money2(p.rec)}</span>`;
   html+= r.a.hourly
     ? `<br><span style="opacity:.75">Forecast from the billable resourcing in this ${unitName(mode)} (hourly rates)</span>`
@@ -2775,6 +2897,7 @@ function popupRow(label, cents, ai){
   const isNew = ai===null;
   return `<div class="op-row" data-ai="${isNew?'new':ai}">
     <input class="op-lbl" ${isNew?'id="op-label"':''} type="text" maxlength="16" autocomplete="off" spellcheck="false" placeholder="Label" value="${escHtml(label||'')}" title="Optional short label shown before the amount, e.g. INV01">
+    <input class="op-pct" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" placeholder="%" title="Percent complete of the total fee with this invoice. Works out the amount: this percent complete of the fee, less everything invoiced before it.">
     <input class="op-amt" ${isNew?'id="op-input"':''} type="text" inputmode="decimal" autocomplete="off" spellcheck="false" placeholder="${isNew?'Add invoice $0.00':'$0.00'}" value="${cents===null?'':(cents/100).toFixed(2)}">
     ${isNew?'<span class="op-del" style="visibility:hidden">✕</span>':`<button class="op-del" type="button" title="Remove this invoice" onclick="removePopupRow(this)">✕</button>`}
   </div>`;
@@ -2788,8 +2911,10 @@ function openActualPopup(){
     : `Invoices, ${t.name} (${fmtDisplay(b.start)} to ${fmtDisplay(b.end)})`;
   const rows=document.getElementById('op-rows');
   rows.innerHTML=here.map(x=>popupRow(x.a.label,x.a.cents,x.i)).join('')+popupRow('',null,null);
+  const pctOn=!isHourly(h) && feeCents(h)>0;
+  document.getElementById('ovr-popup').classList.toggle('has-pct',pctOn);
   rows.querySelectorAll('input').forEach(inp=>{
-    inp.addEventListener('input',updateOverrideHint);
+    inp.addEventListener('input',()=>{ if(inp.classList.contains('op-pct')) pctToAmount(inp.closest('.op-row')); updateOverrideHint(); });
     inp.addEventListener('keydown',e=>{
       if(e.key==='Enter'){ e.preventDefault(); commitOverride(); }
       if(e.key==='Escape'){ e.preventDefault(); closeOverridePopup(); }
@@ -2804,6 +2929,36 @@ function openActualPopup(){
   // Editing an existing invoice is the common case; otherwise start a new one
   const first=rows.querySelector(here.length?'.op-row .op-amt':'#op-input');
   first.focus(); first.select();   // synchronous, so typing straight away lands in the box
+}
+// % complete on the invoice popup. Prior = every other invoice dated on or
+// before this one's invoice date, plus the rows above it in the popup.
+function popupRowsVisible(){ return [...document.querySelectorAll('#op-rows .op-row')].filter(r=>r.dataset.del!=='1'); }
+function popupPrior(row){
+  const t=ctxTarget, h=headings[t.idx], rows=popupRowsVisible();
+  const shown=new Set([...document.querySelectorAll('#op-rows .op-row')].map(r=>r.dataset.ai).filter(x=>x!=='new').map(Number));
+  const lumpOf=r=>r.dataset.ai==='new'?actualLumpDate(t.b):actualLumpDate(h.actuals[+r.dataset.ai]);
+  const L=lumpOf(row);
+  let prior=0;
+  (h.actuals||[]).forEach((a,i)=>{ if(!shown.has(i) && actualLumpDate(a)<=L) prior+=a.cents; });
+  for(const r of rows){ if(r===row) break; if(lumpOf(r)<=L){ const v=parseMoney(r.querySelector('.op-amt').value); if(v) prior+=Math.round(v*100); } }
+  return prior;
+}
+function pctToAmount(row){
+  const h=headings[ctxTarget.idx], C=feeCents(h), pi=row.querySelector('.op-pct'), raw=pi.value.trim().replace('%','');
+  if(!raw||!C) return;
+  const v=parseMoney(raw); pi.classList.toggle('invalid', v===null||v>100);
+  if(v===null||v>100) return;
+  const net=Math.round(C*v/100)-popupPrior(row);
+  row.querySelector('.op-amt').value=(net/100).toFixed(2);
+}
+function refreshPopupPcts(){
+  const h=headings[ctxTarget.idx], C=feeCents(h);
+  if(!C || isHourly(h)) return;
+  popupRowsVisible().forEach(r=>{
+    const pi=r.querySelector('.op-pct'); if(document.activeElement===pi) return;
+    const v=parseMoney(r.querySelector('.op-amt').value);
+    pi.value = v ? (Math.round((popupPrior(r)+Math.round(v*100))/C*1000)/10).toFixed(1).replace(/\.0$/,'') : '';
+  });
 }
 function removePopupRow(btn){
   const row=btn.closest('.op-row');
@@ -2856,7 +3011,13 @@ function updateOverrideHint(){
   if(a.imbalance){ warn=true; msg+=`Every working day would then be in an invoiced period. Actual invoices would total ${money2(a.actualSum)} against a total fee of ${money2(a.C)}, and the ${money2(Math.abs(a.imbalance))} difference has nowhere to go.`; }
   else if(a.R<0){ warn=true; msg+=`Actual invoices would total ${money2(a.actualSum)}, more than the ${money2(a.C)} total fee, so the other ${unitName(view)}s go negative (${money2(a.R)} between them).`; }
   else if(a.hourly) msg+=`Hourly rates: the other ${unitName(view)}s are forecast from billable resourcing, ${money2(a.R)} still to invoice. Total fee ${money2(a.C)}.`;
-  else msg+=`Still to invoice ${money2(a.R)} of the ${money2(a.C)} total fee, spread pro rata over ${freeKeys.size} other ${unitName(view)}${freeKeys.size!==1?'s':''}.`;
+  else msg+=`Still to invoice ${money2(a.R)} of the ${money2(a.C)} total fee, ${a.ms&&!a.ms.unused?'following the invoicing milestones':'spread pro rata'} over ${freeKeys.size} other ${unitName(view)}${freeKeys.size!==1?'s':''}.`;
+  if(!isHourly(h) && a.C>0){
+    refreshPopupPcts();
+    const rows=popupRowsVisible(); let before=null, after=0;
+    if(rows.length){ before=popupPrior(rows[0]); after=before; rows.forEach(r=>{ const v=parseMoney(r.querySelector('.op-amt').value); if(v) after+=Math.round(v*100); }); }
+    if(before!=null) msg+=` ${fmtPct(before/a.C*100)} complete before this ${unit}; ${fmtPct(after/a.C*100)} complete after it.`;
+  }
   hint.className='op-hint'+(warn?' warn':'');
   hint.textContent=msg;
 }
@@ -2942,6 +3103,7 @@ function updateStatus(fc){
     ? `${r.h.name}: budget from resourcing is ${money2(Math.abs(r.a.budgetGap))} ${r.a.budgetGap>0?'short of':'over'} the fee`
     : `${r.h.name}: budget from resourcing exceeds the fee, other periods negative`));
   fc.rows.forEach(r=>{ if(!r.a.imbalance && r.a.R<0) warn.push(`${r.h.name}: actual invoices exceed the fee`); });
+  fc.rows.forEach(r=>{ if(r.a.ms && r.a.ms.nonMono) warn.push(`${r.h.name}: an invoicing milestone is lower than an earlier one`); });
   document.getElementById('sb-warn').textContent=warn.join(' · ');
   const hid=document.getElementById('sb-hidden');
   hid.style.display=hiddenHeadings.length?'':'none';
@@ -3034,7 +3196,10 @@ function addMilestones(row, h, nameLbl){
     d.style.left=x+'px';
     d.style.setProperty('--ms-color', lead.indirect ? lightenHex(base, INDIRECT_BAR_TINT) : base);
     if(lead.indirect) d.style.setProperty('--ms-shadow','none');
-    attachTip(d,()=>milestoneTip(g.list));
+    attachTip(d,()=>milestoneTip(g.list,h));
+    const hi=headings.indexOf(h);
+    if(hi>=0){ d.classList.add('ms-click'); d.addEventListener('click',e=>{ e.stopPropagation(); openMsInvPopup(e,hi,g.list); }); }
+    if(g.list.some(m=>invMsOf(h,m.id))) d.classList.add('ms-inv');
     row.appendChild(d);
     if(!lead.name && g.list.length===1) return;
     const left=x + pxPerDay*0.5 + 17.5;   // diamond right point + 10px, as in the Gantt tool
@@ -3044,27 +3209,37 @@ function addMilestones(row, h, nameLbl){
     if(room<24) return;
     const lbl=document.createElement('div');
     lbl.className='bar-ext-label ms-label';
-    lbl.textContent=(lead.name||'(unnamed)').trim()+(g.list.length>1?`  +${g.list.length-1}`:'');
+    const tgt=g.list.map(m=>invMsOf(h,m.id)).find(Boolean);
+    lbl.textContent=(lead.name||'(unnamed)').trim()+(g.list.length>1?`  +${g.list.length-1}`:'')+(tgt?` · ${invMsText(tgt)}`:'');
     lbl.style.left=left+'px';
     if(room!==Infinity) lbl.style.maxWidth=room+'px';
     lbl.style.color=h.color;
     if(lead.bold||lead.major) lbl.style.fontWeight='700';
     if(lead.overrideColor) lbl.style.color=lead.overrideColor;
     if(lead.indirect){ lbl.style.color=lightenHex(lead.overrideColor||h.color, INDIRECT_TEXT_TINT); lbl.style.fontStyle='italic'; }
-    attachTip(lbl,()=>milestoneTip(g.list));
+    attachTip(lbl,()=>milestoneTip(g.list,h));
+    if(hi>=0){ lbl.classList.add('ms-click'); lbl.addEventListener('click',e=>{ e.stopPropagation(); openMsInvPopup(e,hi,g.list); }); }
     row.appendChild(lbl);
   });
 }
 // The Gantt tool's tooltip, one block per milestone on that date
-function milestoneTip(list){
+function invMsText(t){ return (t.pct!=null ? fmtPct(t.pct) : money0(t.cents))+' complete'; }
+function milestoneTip(list,h){
+  const C=h?feeCents(h):0, hourly=h&&isHourly(h);
   return list.map(m=>{
+    const t=h?invMsOf(h,m.id):null;
+    const invLine = t ? `<br><strong>Invoicing milestone: ${invMsText(t)}</strong>`
+        +(C&&!hourly?` <span style="opacity:.75">(${t.pct!=null?money2(Math.round(C*t.pct/100)):fmtPct(Math.min(C,t.cents)/C*100)+' complete'}, invoiced in total by this date)</span>`:'')
+        +(hourly?'<br><span style="opacity:.75">Not used: hourly rates heading</span>':'')
+      : '';
     const durLine=`<br>Delay: ${fmtDuration(m.delay)}${m.delay===0?' (on predecessor end)':''}`;
     const typeLine=m.major?'<br><em>Major milestone</em>':'<br><em>Milestone</em>';
     return `<strong>${escHtml(m.name)||'(unnamed)'}</strong><br>Start: ${fmtDisplay(m.date)}<br>End: ${fmtDisplay(m.date)}${durLine}`
       +(m.depNames.length?`<br>Depends on: ${escHtml(m.depNames.join(', '))}`:'')
       +typeLine
-      +(m.comments?`<br><span style="opacity:.75;font-style:italic">💬 ${escHtml(m.comments)}</span>`:'');
-  }).join('<div style="border-top:1px solid #334155;margin:5px 0"></div>');
+      +(m.comments?`<br><span style="opacity:.75;font-style:italic">💬 ${escHtml(m.comments)}</span>`:'')+invLine;
+  }).join('<div style="border-top:1px solid #334155;margin:5px 0"></div>')
+    +(h?`<br><span style="opacity:.6;font-style:italic">Click to ${list.some(m=>invMsOf(h,m.id))?'change the':'set an'} invoicing milestone</span>`:'');
 }
 
 // ═══════════════════════════════════════════════════════
@@ -3733,7 +3908,7 @@ function closeHoursPopup(){
   if(cfg && cfg.ghost && cfg.ghost.el) cfg.ghost.el.remove();
   if(cfg && cfg.onClose) cfg.onClose();
 }
-function closeAllPopups(){ closeCtx(); closeOverridePopup(); closeHoursPopup(); if(typeof closeExpPopup==='function') closeExpPopup(); }
+function closeAllPopups(){ closeCtx(); closeOverridePopup(); closeHoursPopup(); if(typeof closeExpPopup==='function') closeExpPopup(); if(typeof closeMsiPopup==='function') closeMsiPopup(); }
 document.getElementById('hp-input').addEventListener('input',updateHoursHint);
 ['hp-start','hp-end'].forEach(id=>{
   const el=document.getElementById(id), nat=document.getElementById(id+'-native');
@@ -4414,6 +4589,106 @@ function leftExpenseRow(h, i, r, spec){
   sr.addEventListener('contextmenu',e=>{ e.preventDefault(); const row=document.querySelector(`#gantt-rows [data-rk="${i}e"]`); if(row) openExpRowMenu(e,i,row); });
   return sr;
 }
+
+
+// ═══════════════════════════════════════════════════════
+//  INVOICING MILESTONES (fixed-fee headings)
+//  Click a milestone on the heading row: how much of the fee is invoiced in
+//  total by that date, as a % or a $ sum. The invoice forecast then builds
+//  steadily to each milestone (progress claims) and follows the milestone
+//  when the programme moves it. The budget is not affected.
+// ═══════════════════════════════════════════════════════
+let msiCfg=null;
+function openMsInvPopup(e, i, list){
+  hideTooltip(); closeAllPopups();
+  const h=headings[i], C=feeCents(h);
+  msiCfg={i, ids:list.map(m=>m.id)};
+  document.getElementById('msi-title').textContent=h.name;
+  document.getElementById('msi-sub').textContent=`Invoicing milestone${list.length>1?'s':''} · ${fmtDisplay(list[0].date)}`;
+  document.getElementById('msi-rows').innerHTML=list.map(m=>{
+    const t=invMsOf(h,m.id), unit=t&&t.cents!=null?'$':'%';
+    const val=t?(t.pct!=null?String(t.pct):(t.cents/100).toFixed(2)):'';
+    return `<div class="msi-row" data-id="${escHtml(String(m.id))}">
+      <div class="msi-name">${m.major?'◆◆':'◆'} ${escHtml(m.name||'(unnamed)')}</div>
+      <div class="msi-input"><div class="hp-units msi-units">
+        <button type="button" tabindex="-1" class="${unit==='%'?'active':''}" data-u="%" onmousedown="event.preventDefault()" onclick="setMsiUnit(this,'%')">% complete</button><button type="button" tabindex="-1" class="${unit==='$'?'active':''}" data-u="$" onmousedown="event.preventDefault()" onclick="setMsiUnit(this,'$')">$ complete</button>
+      </div><input class="msi-val" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" placeholder="${unit==='%'?'0':'$0.00'}" value="${val}"></div>
+    </div>`;
+  }).join('');
+  document.querySelectorAll('#msi-rows .msi-val').forEach(inp=>{
+    inp.addEventListener('input',updateMsiHint);
+    inp.addEventListener('keydown',ev=>{ if(ev.key==='Enter'){ ev.preventDefault(); commitMsi(); } if(ev.key==='Escape'){ ev.preventDefault(); closeMsiPopup(); } });
+  });
+  document.getElementById('msi-clear').style.display=list.some(m=>invMsOf(h,m.id))?'':'none';
+  const pop=document.getElementById('msi-popup');
+  pop.classList.add('visible');
+  const pr=pop.getBoundingClientRect();
+  pop.style.left=Math.max(8,Math.min(e.clientX, window.innerWidth-pr.width-8))+'px';
+  pop.style.top=Math.max(8,Math.min(e.clientY+12, window.innerHeight-pr.height-8))+'px';
+  updateMsiHint();
+  const first=document.querySelector('#msi-rows .msi-val'); first.focus(); first.select();
+}
+function setMsiUnit(btn,u){
+  const row=btn.closest('.msi-row'), inp=row.querySelector('.msi-val'), C=feeCents(headings[msiCfg.i]);
+  const was=row.querySelector('.msi-units .active').dataset.u;
+  row.querySelectorAll('.msi-units button').forEach(b=>b.classList.toggle('active',b.dataset.u===u));
+  inp.placeholder=u==='%'?'0':'$0.00';
+  // Convert what is typed, so switching keeps the same point
+  const v=parseMoney(inp.value);
+  if(inp.value.trim() && v!=null && C && was!==u) inp.value = u==='$' ? (Math.round(C*v/100)/100).toFixed(2) : String(Math.round(v*100/C*100*10)/10);
+  updateMsiHint(); inp.focus();
+}
+function readMsi(){
+  const h=headings[msiCfg.i], C=feeCents(h), out=[]; let bad='';
+  document.querySelectorAll('#msi-rows .msi-row').forEach(row=>{
+    const inp=row.querySelector('.msi-val'), raw=inp.value.trim(), u=row.querySelector('.msi-units .active').dataset.u;
+    const v=raw===''?null:parseMoney(raw.replace('%',''));
+    const wrong = raw!=='' && (v===null || (u==='%' && v>100));
+    inp.classList.toggle('invalid',wrong);
+    if(wrong){ bad=u==='%'?'Enter a percentage from 0 to 100.':'Amount not recognised. Try 30000, $30,000 or 30k.'; return; }
+    const id=msiCfg.ids.find(x=>String(x)===row.dataset.id);
+    out.push({id, set: v===null?null:(u==='%'?{id,pct:Math.round(v*10)/10}:{id,cents:Math.round(v*100)})});
+  });
+  return {out, bad, C};
+}
+function updateMsiHint(){
+  if(!msiCfg) return;
+  const h=headings[msiCfg.i], hint=document.getElementById('msi-hint'), {out,bad,C}=readMsi();
+  if(bad){ hint.className='op-hint warn'; hint.textContent=bad; return; }
+  let msg='', warn=false;
+  if(isHourly(h)){ warn=true; msg='This is an hourly rates heading, so invoicing follows the resourcing and milestones are not used. They are kept and apply if it changes to fixed-fee. '; }
+  else if(!C){ warn=true; msg='Enter a total fee for this heading first. '; }
+  out.filter(o=>o.set).forEach(o=>{
+    const v=o.set.pct!=null?Math.round(C*o.set.pct/100):o.set.cents;
+    if(C && !isHourly(h)) msg+=`${o.set.pct!=null?fmtPct(o.set.pct)+' complete = '+money2(v):money2(v)+' = '+fmtPct(Math.min(C,v)/C*100)+' complete'} of the ${money2(C)} fee, invoiced in total by this date. `;
+    if(o.set.cents!=null && v>C){ warn=true; msg+='That is more than the fee, so it counts as 100%. '; }
+  });
+  // Would the milestones run backwards?
+  const trial={...h, invMs:(h.invMs||[]).filter(x=>!out.some(o=>String(o.id)===String(x.id))).concat(out.filter(o=>o.set).map(o=>o.set))};
+  const pts=invMsPoints(trial,C);
+  if(pts.some((p,n)=>n&&p.value<Math.max(...pts.slice(0,n).map(q=>q.value)))){ warn=true; msg+='A later milestone has a lower figure than an earlier one; the forecast holds at the higher figure until it is passed. '; }
+  if(!out.some(o=>o.set)) msg+='Leave blank for no invoicing milestone. ';
+  if(!isHourly(h)) msg+='Forecast invoicing builds steadily over the working days to each milestone and reaches 100% at the end of the heading. The budget is not changed.';
+  hint.className='op-hint'+(warn?' warn':''); hint.textContent=msg;
+}
+function commitMsi(){
+  if(!msiCfg) return;
+  const {out,bad}=readMsi(); if(bad) return;
+  const h=headings[msiCfg.i];
+  h.invMs=(h.invMs||[]).filter(x=>!out.some(o=>String(o.id)===String(x.id))).concat(out.filter(o=>o.set).map(o=>o.set));
+  closeMsiPopup(); refresh();
+}
+function clearMsi(){
+  if(!msiCfg) return;
+  const h=headings[msiCfg.i];
+  h.invMs=(h.invMs||[]).filter(x=>!msiCfg.ids.some(id=>String(id)===String(x.id)));
+  closeMsiPopup(); refresh();
+}
+function closeMsiPopup(){ const p=document.getElementById('msi-popup'); if(p) p.classList.remove('visible'); msiCfg=null; }
+document.addEventListener('mousedown',e=>{
+  const pop=document.getElementById('msi-popup');
+  if(pop && pop.classList.contains('visible') && !pop.contains(e.target)) closeMsiPopup();
+});
 
 // ═══════════════════════════════════════════════════════
 //  FEE ENTRY
