@@ -141,6 +141,10 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
 .heading-color-btn{width:16px;height:16px;border-radius:3px;border:2px solid rgba(0,0,0,.2);cursor:pointer;flex-shrink:0;padding:0;background:transparent}
 .heading-del-btn{background:none;border:none;cursor:pointer;font-size:14px;padding:0 4px;line-height:1;display:flex;align-items:center;justify-content:center;width:100%;opacity:.5}
 .heading-del-btn:hover{opacity:1;color:var(--bar-crit)!important}
+.heading-del-btn.hid-toggle:hover{color:inherit!important}
+.heading-row.heading-hidden .heading-name{opacity:.75}
+.heading-row.heading-hidden .hid-toggle{opacity:.8}
+.hid-note{font-size:10px;font-style:italic;color:var(--text-faint);white-space:nowrap}
 
 /* Fee entry. Shows $0.00 at rest, a plain number while editing. */
 .fee-cell{padding:0 2px!important}
@@ -163,6 +167,20 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
 .title-input:focus{outline:none;border-color:#3b82f6;background:#0f172a}
 .title-input::placeholder{color:#64748b;font-weight:400;font-style:italic}
 #topbar h1,#topbar .tb-btn{flex-shrink:0}
+/* Narrower screens: drop optional labels and tighten, so Settings and the
+   Weekly / billing switch stay on screen; scroll sideways as a last resort */
+@media (max-width:1720px){
+  #topbar{gap:7px;padding:0 10px}
+  #topbar .tb-btn{padding-left:8px!important;padding-right:8px!important}
+  #topbar .tb-opt{display:none}
+  #topbar .tb-sep{margin:0 1px}
+}
+@media (max-width:1420px){
+  #topbar{gap:5px}
+  #topbar .title-input{min-width:80px}
+}
+#topbar{overflow-x:auto;overflow-y:hidden;scrollbar-width:none}
+#topbar::-webkit-scrollbar{display:none}
 .fee-input.unallocated{text-decoration:underline wavy #d97706;text-underline-offset:3px}
 .fee-input.invalid{background:#fee2e2!important}
 
@@ -511,18 +529,19 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
   <input id="project-title" class="title-input" type="text" placeholder="Project title" autocomplete="off" spellcheck="false" maxlength="120"
     title="Project title. Saved in the programme JSON, so the Gantt tool shows it too." onchange="setProjectTitle(this.value)" onkeydown="if(event.key==='Enter')this.blur();if(event.key==='Escape'){this.value=projectTitle;this.blur();}">
   <div class="tb-sep"></div>
-  <span class="tb-label">Zoom</span>
+  <span class="tb-label tb-opt">Zoom</span>
   <button class="tb-btn tb-btn-ghost" onclick="adjustZoom(-1)" style="padding:4px 8px">−</button>
   <input id="zoom-val" type="number" min="2" max="80" value="10"
     style="width:40px;text-align:center;background:#0f172a;border:1px solid #334155;color:#f1f5f9;border-radius:4px;font-size:12px;padding:3px 4px;font-family:var(--font-mono)"
     onchange="setZoom(+this.value)" onkeydown="if(event.key==='Enter')this.blur()"
     title="Pixels per day (2–80)">
   <button class="tb-btn tb-btn-ghost" onclick="adjustZoom(1)" style="padding:4px 8px">+</button>
-  <span class="tb-label" style="margin-left:2px">px/day</span>
+  <span class="tb-label tb-opt" style="margin-left:2px">px/day</span>
   <div class="tb-sep"></div>
   <button class="tb-btn tb-btn-primary" onclick="importJSON()" title="Open the programme JSON from the Gantt tool. Fees and actual invoices saved in it come back too.">Import JSON</button>
-  <button id="undo-btn" class="tb-btn tb-btn-ghost" onclick="undo()" style="opacity:0.35;font-size:13px;padding:4px 10px" title="Nothing to undo">↩ Undo</button>
-  <button id="redo-btn" class="tb-btn tb-btn-ghost" onclick="redo()" style="opacity:0.35;font-size:13px;padding:4px 10px" title="Nothing to redo">↪ Redo</button>
+  <button class="tb-btn tb-btn-ghost" onclick="addProject()" style="padding:5px 9px" title="Add another project's programme to this one, to see resourcing and invoicing across projects. Makes a new combined programme; the original files are not changed.">＋ Project</button>
+  <button id="undo-btn" class="tb-btn tb-btn-ghost" onclick="undo()" style="opacity:0.35;font-size:13px;padding:4px 10px" title="Nothing to undo">↩<span class="tb-opt"> Undo</span></button>
+  <button id="redo-btn" class="tb-btn tb-btn-ghost" onclick="redo()" style="opacity:0.35;font-size:13px;padding:4px 10px" title="Nothing to redo">↪<span class="tb-opt"> Redo</span></button>
   <button class="tb-btn tb-btn-ghost" onclick="reloadJSON()" title="Read the programme JSON again now, to pick up changes just saved in the Gantt tool. Your fees and invoices on screen are kept.">↻ Reload JSON</button>
   <button id="save-btn" class="tb-btn tb-btn-ghost" onclick="exportJSON()" title="Save the fees and actual invoices back into the programme JSON, the same file the Gantt tool uses">Save JSON</button>
   <button class="tb-btn tb-btn-ghost" onclick="exportExcel()" style="border-color:#10b981;color:#10b981" title="Excel workbook: financials and resourcing for the project, then for each heading. Money by week or billing period as shown on screen; resourcing in days per week.">Export Excel</button>
@@ -592,7 +611,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
   <span id="sb-total">–</span>
   <span id="sb-span">–</span>
   <span id="sb-warn"></span>
-  <span id="sb-hidden" style="color:#93c5fd;cursor:pointer;display:none" onclick="restoreHidden()"></span>
+  <span id="sb-hidden" style="color:#93c5fd;cursor:pointer;display:none" onclick="restoreHidden(event)"></span>
   <div style="flex:1"></div>
   <span id="sb-source" style="color:#475569"></span>
   <span style="color:#334155">Enter the total fee per heading · Click below a bar to enter an invoice or actual hours · Drag on a resource row to add a bar</span>
@@ -722,6 +741,9 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
     <label style="font-size:12px;color:#4a4842;display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:16px">
       <input type="checkbox" id="set-nonwork" onchange="if(this.checked!==showNonWorkBands) toggleNonWorkBands()"> Show working days</label>
     <div style="font-size:11px;color:#6b6860;line-height:1.45;margin:-10px 0 16px 24px">Shades weekends, public holidays and days marked non-working.</div>
+    <label style="font-size:12px;color:#4a4842;display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:16px">
+      <input type="checkbox" id="set-cit"> Count collapsed headings in the totals</label>
+    <div style="font-size:11px;color:#6b6860;line-height:1.45;margin:-10px 0 16px 24px">On: a collapsed heading still adds to the totals, the people schedule, Excel and Export DT; collapsing just tidies the screen. Off: collapsed headings are left out (for unconfirmed phases).</div>
     <div class="set-sec">Billing period</div>
     <label style="font-size:11px;color:#6b6860;display:block;margin-bottom:4px">Invoiced</label>
     <select id="set-freq" onchange="onSettingsInput()" style="width:100%;padding:6px 9px;border:1px solid #c8c4bc;border-radius:4px;font-size:13px;margin-bottom:12px;font-family:var(--font)">
@@ -1109,6 +1131,7 @@ function readForecastProp(f){
     hoursPerDay: isFinite(+f.hoursPerDay)&&+f.hoursPerDay>0 ? sanitiseHpd(f.hoursPerDay) : null,
     utilisation: f.utilisation!=null && isFinite(+f.utilisation) ? sanitiseUtil(f.utilisation) : null,
     basis: f.basis==='hourly' ? 'hourly' : 'fixed',
+    cit: f.collapsedInTotals===true,
     budgetFrom: sanitiseBudgetFrom(f.budgetFrom),
     resources: sanitiseResources(f.resources),
     expenses: sanitiseExpenses(f.expenses),
@@ -1135,6 +1158,9 @@ const HPD_DEFAULT=7.6;
 // headings only (80 = 80 of every 100 hours are invoiced). Project-wide.
 const UTIL_DEFAULT=100;
 let utilisation=UTIL_DEFAULT;
+// Collapsed (hidden) headings: left out of the totals unless this is on.
+// Project-wide, saved on the headings like utilisation.
+let collapsedInTotals=false;
 function sanitiseUtil(v){ v=Math.round((+v||0)*10)/10; return v>=0&&v<=100 ? v : UTIL_DEFAULT; }
 let hoursPerDay=HPD_DEFAULT;      // project-wide, set in Settings
 function sanitiseHpd(v){ v=Math.round((+v||0)*100)/100; return v>0&&v<=24 ? v : HPD_DEFAULT; }
@@ -1273,6 +1299,7 @@ function applyFigures(h, f){
   h.fileBilling=f.billing||null;
   h.fileHpd=f.hoursPerDay||null;
   h.fileUtil=f.utilisation!=null?f.utilisation:null;
+  h.fileCIT=!!f.cit;
   h.basis=f.basis==='hourly'?'hourly':'fixed';
   h.budgetFrom=copyBudgetFrom(f.budgetFrom);
   h.expenses=copyExpenses(f.expenses);
@@ -1300,7 +1327,8 @@ function forecastPayload(h){
   if(!isDefaultBilling(billing)) p.billing={...billing};
   if(hoursPerDay!==HPD_DEFAULT) p.hoursPerDay=hoursPerDay;
   if(utilisation!==UTIL_DEFAULT) p.utilisation=utilisation;
-  if(!p.fee && !p.actuals.length && !p.resources && !p.color && p.order==null && !p.excluded && !p.billing && !p.hoursPerDay && !p.basis && !p.budgetFrom && !p.expenses && !p.invMilestones && p.utilisation==null) return null;
+  if(collapsedInTotals) p.collapsedInTotals=true;
+  if(!p.fee && !p.actuals.length && !p.resources && !p.color && p.order==null && !p.excluded && !p.billing && !p.hoursPerDay && !p.basis && !p.budgetFrom && !p.expenses && !p.invMilestones && p.utilisation==null && !p.collapsedInTotals) return null;
   return p;
 }
 
@@ -1554,9 +1582,16 @@ function allocateHeading(h){
   const caps=(h.budgetFrom||[]);
   const inCap=d=>caps.some(c=>d>=c.start&&d<=c.end);
   let capSum=0;
+  // A captured period is spread over the heading's own working days inside
+  // it, so a billing period that runs past the heading's start or end does
+  // not put budget on days outside the heading. With none inside, it goes
+  // on the heading's nearest working day.
+  const daySet=new Set(days);
   caps.forEach(c=>{
     capSum+=c.cents;
-    const wd=allWorkdays(c.start,c.end), on=wd.length?wd:[c.end];
+    let on=allWorkdays(c.start,c.end).filter(d=>daySet.has(d));
+    if(!on.length && days.length) on=[ c.end<days[0] ? days[0] : c.start>days[days.length-1] ? days[days.length-1] : (days.find(d=>d>c.end)||days[days.length-1]) ];
+    if(!on.length){ const wd=allWorkdays(c.start,c.end); on=wd.length?wd:[c.end]; }
     spreadCents(c.cents,on).forEach((v,d)=>budget.set(d,(budget.get(d)||0)+v));
   });
   const bFree=days.filter(d=>!inCap(d));
@@ -1762,7 +1797,7 @@ function buildForecast(mode){
   let totalFee=0, unallocated=0;
   const add=(m,k,c)=>m.set(k,(m.get(k)||0)+c);
   const blank=()=>({cents:0,days:0,free:0,freeCents:0,locked:0,act:new Set()});
-  const rows=headings.map(h=>{
+  const rows=headings.concat(collapsedInTotals?hiddenHeadings:[]).map(h=>{
     const a=allocateHeading(h);
     totalFee+=a.C;
     if(a.C && !a.N && !(h.actuals||[]).length) unallocated+=a.C;
@@ -1988,9 +2023,39 @@ function rowSpecs(i, r){
   out.push({kind:'e',rk:i+'e',ht:laneRowHeight(lanesOf((h.expenses||{}).actual||[]).count)});   // expenses: forecast bars on top, actuals beneath
   return out;
 }
-function totalRowCount(){ return headings.reduce((s,h,i)=>s+rowSpecs(i,null).length,0); }
+// Hidden headings stay in place as one collapsed heading row each
+function totalRowCount(){ return headings.reduce((s,h,i)=>s+rowSpecs(i,null).length,0)+hiddenHeadings.length; }
 function contentHeight(){
-  return headings.reduce((s,h,i)=>s+rowSpecs(i,null).reduce((t,x)=>t+x.ht,0),0);
+  return headings.reduce((s,h,i)=>s+rowSpecs(i,null).reduce((t,x)=>t+x.ht,0),0)+hiddenHeadings.length*ROW_H;
+}
+// Every heading in screen order, shown and hidden
+function displayHeadings(){ return sortForForecast(allHeadings()); }
+// Fix the current screen order into each heading's `order`, so hiding,
+// showing and dragging keep every heading where it is
+function freezeOrder(list){ (list||displayHeadings()).forEach((h,n)=>{ h.order=n; }); }
+const CHEVRON=up=>`<svg width="11" height="11" viewBox="0 0 12 12" aria-hidden="true"><polyline points="${up?'2.5,8 6,4.5 9.5,8':'2.5,4.5 6,8 9.5,4.5'}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+function collapsedLeftRow(h){
+  const row=document.createElement('div');
+  row.className='heading-row heading-hidden';
+  row.dataset.rk='hid'+h.id; row.dataset.hid=h.id;
+  row.style.background=h.color+'1f'; row.style.color=h.color;
+  row.innerHTML=`
+    <div class="task-cell" style="padding:0"><button class="heading-del-btn hid-toggle" tabindex="-1" title="Show" style="color:${h.color}">${CHEVRON(true)}</button></div>
+    <div class="task-cell"></div>
+    <div class="task-cell" style="justify-content:center"><span class="heading-color-btn" style="background:${h.color};cursor:default"></span></div>
+    <div class="task-cell" style="overflow:hidden"><div class="heading-name" title="${escHtml(h.name)}">${escHtml(h.name)||'<span style="opacity:.5">(unnamed heading)</span>'}</div></div>
+    <div class="task-cell"><span class="hid-note">${collapsedInTotals?'Collapsed · in totals':'Hidden · not in totals'}</span></div>
+    <div class="task-cell"></div><div class="task-cell"></div>`;
+  row.querySelector('.hid-toggle').addEventListener('click',()=>showHeadings([h]));
+  row.addEventListener('contextmenu',e=>{ e.preventDefault(); document.getElementById('ctx-title').textContent=h.name; showMenu(e,[`<div class="ctx-item" onclick="closeCtx();showHeadings([hiddenHeadings.find(x=>x.id===${JSON.stringify(h.id)})])">↺ Show this heading</div>`]); });
+  return row;
+}
+function collapsedGanttRow(h){
+  const row=document.createElement('div');
+  row.className='gantt-heading-row heading-hidden';
+  row.dataset.rk='hid'+h.id; row.dataset.hid=h.id;
+  row.style.background=lightenHex(h.color,0.07);
+  return row;
 }
 function rowsHeight(){ return Math.max(contentHeight(),200); }
 
@@ -2022,7 +2087,9 @@ function renderLeft() {
   body.innerHTML='';
   const fc = currentForecast || buildForecast(breakdownView);
   const todayTxt = fmtDisplay(todayStr());
-  headings.forEach((h,i)=>{
+  displayHeadings().forEach(h=>{
+    if(h.excluded){ body.appendChild(collapsedLeftRow(h)); return; }
+    const i=headings.indexOf(h);
     const r=fc.rows[i];
     const {start,end}=headingSpan(h);
     const nDays=r.days, C=r.cents;
@@ -2040,7 +2107,7 @@ function renderLeft() {
     row.style.color=h.color;
     row.innerHTML=`
       <div class="task-cell" style="padding:0">
-        <button class="heading-del-btn" tabindex="-1" onclick="deleteHeading(${i})" title="Remove from the forecast (the programme keeps it; Show hidden in the status bar brings it back)" style="color:${h.color}">×</button>
+        <button class="heading-del-btn hid-toggle" tabindex="-1" onclick="deleteHeading(${i})" title="Hide" style="color:${h.color}">${CHEVRON(false)}</button>
       </div>
       <div class="task-cell row-handle" title="Drag to reorder" onmousedown="startRowDrag(event,${i})">⠿</div>
       <div class="task-cell" style="justify-content:center">
@@ -2450,7 +2517,9 @@ function renderGanttBars(totalPx,fc) {
   wrap.style.minHeight=contentHeight()+'px';
   const mode=fc.mode;
 
-  fc.rows.forEach((r,i)=>{
+  displayHeadings().forEach(hh=>{
+    if(hh.excluded){ ganttRows.appendChild(collapsedGanttRow(hh)); return; }
+    const i=headings.indexOf(hh), r=fc.rows[i];
     const h=r.h;
     const segX=(h.segments||[]).map(seg=>{
       const x=xForDate(seg.start), x2=xForDate(seg.end)+pxPerDay;
@@ -3107,7 +3176,8 @@ function updateStatus(fc){
   document.getElementById('sb-warn').textContent=warn.join(' · ');
   const hid=document.getElementById('sb-hidden');
   hid.style.display=hiddenHeadings.length?'':'none';
-  hid.textContent=`${hiddenHeadings.length} hidden · show`;
+  hid.textContent=`${hiddenHeadings.length} hidden heading${hiddenHeadings.length!==1?'s':''} · show`;
+  hid.title=`Collapsed${collapsedInTotals?' (counted in the totals)':' and left out of the totals'}: ${hiddenHeadings.map(h=>h.name).join(', ')}. Click to show ${hiddenHeadings.length===1?'it':'them'}, or use the arrow on the row.`;
   updateFileStatus();
 }
 let _flashT=null;
@@ -4732,18 +4802,35 @@ function feeBlur(e,el){
 
 // Removing a heading only hides it from the forecast: the programme keeps
 // it, and its figures are kept (saved with excluded:true).
+// Hiding collapses the heading into its heading row: its milestones,
+// figures, resourcing and expenses are left out of every total until shown.
 function deleteHeading(idx){
-  const [h]=headings.splice(idx,1);
+  const h=headings[idx]; if(!h) return;
+  freezeOrder();
+  headings.splice(idx,1);
   h.excluded=true;
   hiddenHeadings.push(h);
-  refresh();
-  flashStatus('Heading hidden from the forecast. "hidden · show" in the status bar brings it back.');
-}
-function restoreHidden(){
-  if(!hiddenHeadings.length) return;
-  hiddenHeadings.forEach(h=>{ h.excluded=false; });
   setHeadingLists(allHeadings());
   refresh();
+  flashStatus(`${h.name} collapsed${collapsedInTotals?' (still counted in the totals)':' and left out of the totals'}. Click its arrow to show it again.`);
+}
+// The status bar link: one hidden heading comes straight back; several give
+// a list to choose from.
+function restoreHidden(e){
+  if(!hiddenHeadings.length) return;
+  if(hiddenHeadings.length===1 || !e){ showHeadings(hiddenHeadings.slice()); return; }
+  document.getElementById('ctx-title').textContent='Hidden headings';
+  showMenu(e, hiddenHeadings.map((h,n)=>`<div class="ctx-item" onclick="closeCtx();showHeadings([hiddenHeadings[${n}]])">↺ Show ${escHtml(h.name)}</div>`)
+    .concat(['<div class="ctx-sep"></div>',`<div class="ctx-item" onclick="closeCtx();showHeadings(hiddenHeadings.slice())">↺ Show all ${hiddenHeadings.length}</div>`]));
+  const m=document.getElementById('ctx-menu'), r=m.getBoundingClientRect();
+  m.style.top=Math.max(8,e.clientY-r.height-8)+'px';
+}
+function showHeadings(list){
+  freezeOrder();
+  list.forEach(h=>{ h.excluded=false; });
+  setHeadingLists(allHeadings());   // back in programme order
+  refresh();
+  flashStatus(list.length===1?`${list[0].name} is back in the forecast.`:`${list.length} headings are back in the forecast.`);
 }
 
 // ═══════════════════════════════════════════════════════
@@ -4786,7 +4873,8 @@ function startRowDrag(e, idx){
     let to=target + (after?1:0);
     if(idx<to) to--;
     headings.splice(to,0,moved);
-    headings.forEach((h,n)=>{ h.order=n; });   // saved, so the order survives a programme update
+    // saved, so the order survives a programme update; hidden headings keep their slots
+    { let k=0; const slots=displayHeadings().map(x=>x.excluded?x:null); freezeOrder(slots.map(x=>x||headings[k++])); }
     refresh();
   }
   document.addEventListener('mousemove',onMove);
@@ -4850,7 +4938,7 @@ let undoStack=[], redoStack=[], lastState=null, undoEnabled=true;
 function stateSignature(){
   const figs={};
   allHeadings().forEach(h=>{ const f=figuresOf(h); delete f.savedAt; figs[h.id]=f; });
-  return JSON.stringify({figs, order:headings.map(h=>h.id), hidden:hiddenHeadings.map(h=>h.id), billing, hpd:hoursPerDay, util:utilisation, title:projectTitle});
+  return JSON.stringify({figs, order:headings.map(h=>h.id), hidden:hiddenHeadings.map(h=>h.id), billing, hpd:hoursPerDay, util:utilisation, cit:collapsedInTotals, title:projectTitle});
 }
 function recordState(){
   const sig=stateSignature();
@@ -4892,6 +4980,7 @@ function applyState(str){
   billing=sanitiseBilling(s.billing); _billCache.sig='';
   hoursPerDay=sanitiseHpd(s.hpd);
   utilisation=s.util==null?UTIL_DEFAULT:sanitiseUtil(s.util);
+  collapsedInTotals=!!s.cit;
   applyProjectTitle(s.title||'');
   undoEnabled=false; refresh(); undoEnabled=true;
   updateUndoIndicator();
@@ -5081,12 +5170,13 @@ function hpdFromList(list){
   const h=list.find(x=>x.fileHpd);
   return h ? sanitiseHpd(h.fileHpd) : HPD_DEFAULT;
 }
+function citFromList(list){ return list.some(x=>x.fileCIT); }
 function utilFromList(list){
   const h=list.find(x=>x.fileUtil!=null);
   return h ? sanitiseUtil(h.fileUtil) : UTIL_DEFAULT;
 }
 function figuresSig(){
-  const m={_billing:billing, _hpd:hoursPerDay, _util:utilisation, _title:projectTitle};
+  const m={_billing:billing, _hpd:hoursPerDay, _util:utilisation, _cit:collapsedInTotals, _title:projectTitle};
   allHeadings().forEach(h=>{ const p=forecastPayload(h); if(p) m[h.id]=p; });
   return JSON.stringify(Object.keys(m).sort().map(k=>[k,m[k]]));
 }
@@ -5186,7 +5276,7 @@ async function importProgramme(d, fileName, handle, stamp){
     const {pairs, removed}=matchHeadings(list, old);
     const fileBilling=billingFromList(list);
     const differ=[...pairs].filter(([nh,o])=>!figuresEqual(nh,o));
-    if((JSON.stringify(fileBilling)!==JSON.stringify(billing) || hpdFromList(list)!==hoursPerDay || utilFromList(list)!==utilisation) && !differ.length) differ.push([null,null]);
+    if((JSON.stringify(fileBilling)!==JSON.stringify(billing) || hpdFromList(list)!==hoursPerDay || utilFromList(list)!==utilisation || citFromList(list)!==collapsedInTotals) && !differ.length) differ.push([null,null]);
     if(differ.length){
       const fileHas=list.some(h=>forecastPayload(h));
       source = await showChoice('Which figures?',
@@ -5198,7 +5288,7 @@ async function importProgramme(d, fileName, handle, stamp){
       if(!source){ workdayOverrides=prevOverrides; return; }
     }
     if(source==='memory') pairs.forEach((o,nh)=>applyFigures(nh, figuresOf(o)));
-    else { billing=billingFromList(list); hoursPerDay=hpdFromList(list); utilisation=utilFromList(list); }
+    else { billing=billingFromList(list); hoursPerDay=hpdFromList(list); utilisation=utilFromList(list); collapsedInTotals=citFromList(list); }
     let moved=0; const added=[];
     list.forEach(nh=>{ const o=pairs.get(nh); if(!o) added.push(nh.name||'(unnamed)'); else if(JSON.stringify(o.segments)!==JSON.stringify(nh.segments)) moved++; });
     summary=`<p>${pairs.size} heading${pairs.size!==1?'s':''} matched${moved?`, ${moved} with new dates (budget and forecast re-spread; actual invoices stay where they are)`:', no date changes'}.</p>`;
@@ -5210,7 +5300,7 @@ async function importProgramme(d, fileName, handle, stamp){
     showNonWorkBands=!!d.showNonWorkBands;
     document.getElementById('set-nonwork').checked=showNonWorkBands;
     durationMode = d.durationMode==='weeks' ? 'weeks' : 'days';
-    billing=billingFromList(list); hoursPerDay=hpdFromList(list); utilisation=utilFromList(list);
+    billing=billingFromList(list); hoursPerDay=hpdFromList(list); utilisation=utilFromList(list); collapsedInTotals=citFromList(list);
     const withFig=list.filter(h=>h.fee||h.actuals.length).length;
     summary = withFig
       ? `<p>${list.length} heading${list.length!==1?'s':''} loaded, ${withFig} with fees or actual invoices saved in the file.</p>`
@@ -5218,6 +5308,8 @@ async function importProgramme(d, fileName, handle, stamp){
     const restored=await offerLocalCopy(list, fileName);
     if(restored) { source='memory'; summary+=`<p style="margin-top:8px">${restored} heading${restored!==1?'s':''} restored from the copy saved on this computer. Save JSON to put them back in the file.</p>`; }
   }
+  const hidNow=list.filter(h=>h.excluded);
+  if(hidNow.length) summary+=`<p style="margin-top:8px">${hidNow.length} heading${hidNow.length!==1?'s are':' is'} hidden from the forecast: ${hidNow.map(h=>`<strong>${escHtml(h.name)}</strong>`).join(', ')}. ${hidNow.length!==1?'They show':'It shows'} as a collapsed heading row and ${hidNow.length!==1?'are':'is'} ${collapsedInTotals?'still counted in':'left out of'} the totals. Click the arrow on ${hidNow.length!==1?'a':'the'} row to show ${hidNow.length!==1?'one':'it'} again.</p>`;
   if(loose) summary+=`<p class="muted" style="margin-top:8px">${loose} task${loose!==1?'s':''} not under a heading ${loose!==1?'are':'is'} not in the forecast.</p>`;
   const noDates=list.filter(h=>!h.segments.length);
   if(noDates.length) summary+=`<p class="muted" style="margin-top:8px">No dated work under: ${noDates.map(h=>escHtml(h.name)).join(', ')}.</p>`;
@@ -5233,13 +5325,14 @@ function figuresSigOf(doc){
   const prev=workdayOverrides, prevB=billing, prevH=hoursPerDay, prevU=utilisation;
   const {list}=headingsFromGantt(doc);
   billing=billingFromList(list); hoursPerDay=hpdFromList(list); utilisation=utilFromList(list);
-  const m={_billing:billing, _hpd:hoursPerDay, _util:utilisation, _title:typeof doc.projectTitle==='string'?doc.projectTitle:''};
+  const m={_billing:billing, _hpd:hoursPerDay, _util:utilisation, _cit:citFromList(list), _title:typeof doc.projectTitle==='string'?doc.projectTitle:''};
   list.forEach(h=>{ const p=forecastPayload(h); if(p) m[h.id]=p; });
   workdayOverrides=prev; billing=prevB; hoursPerDay=prevH; utilisation=prevU;
   return JSON.stringify(Object.keys(m).sort().map(k=>[k,m[k]]));
 }
 
 function adoptProgramme(d, list, fileName, handle, stamp){
+  combinedPending=false;   // set again straight after by Add project
   programmeDoc=d;
   fileHandle=handle||null;
   fileStamp=stamp||0;
@@ -5284,7 +5377,7 @@ async function checkLinkedFile(force){
     // what it loaded, so its copy can be stale: keep the screen.
     const keepScreen = isDirty() || fileFigs===savedFiguresSig || progChanged;
     if(keepScreen) pairs.forEach((o,nh)=>applyFigures(nh, figuresOf(o)));
-    else { billing=billingFromList(list); hoursPerDay=hpdFromList(list); utilisation=utilFromList(list); }
+    else { billing=billingFromList(list); hoursPerDay=hpdFromList(list); utilisation=utilFromList(list); collapsedInTotals=citFromList(list); }
     let moved=0; pairs.forEach((o,nh)=>{ if(JSON.stringify(o.segments)!==JSON.stringify(nh.segments)) moved++; });
     const added=list.length-pairs.size;
     const prevSaved=savedFiguresSig;
@@ -5453,7 +5546,8 @@ async function exportJSON(){
     if(!r) return;
     if(r!==true){ fileHandle=r; programmeSource=r.name; fileStamp=(await r.getFile()).lastModified; }
     afterSave(doc);
-    flashStatus(r===true ? `✓ Downloaded ${programmeSource}. Replace the original with it.` : `✓ Saved into ${programmeSource}`);
+    flashStatus(r===true ? (combinedPending ? `✓ Downloaded ${programmeSource}: the combined programme. Keep it as a new file; the original files are not changed.` : `✓ Downloaded ${programmeSource}. Replace the original with it.`) : `✓ Saved into ${programmeSource}`);
+    combinedPending=false;
   }catch(e){
     showMessage('Could not save', `<p>${escHtml(e.message)}</p>`);
   }
@@ -5468,6 +5562,162 @@ function afterSave(doc){
   updateSaveMarker(); updateFileStatus();
 }
 window.addEventListener('beforeunload', e=>{ if(isDirty()){ e.preventDefault(); e.returnValue=''; } });
+
+// ═══════════════════════════════════════════════════════
+//  ADD PROJECT: combine another programme into this one
+//  The other file's tasks are added after this programme's, as raw data:
+//   - task ids are renumbered above this file's highest id, and everything
+//     that points at them follows (heading of each task, invoicing
+//     milestones)
+//   - dependencies are task-row numbers (headings not counted), so the
+//     added tasks' numbers move up by this programme's task count
+//   - this programme's settings stay: billing period, hours per day,
+//     utilisation, collapsed headings in totals, calendar, project start,
+//     title. The other file's settings are dropped.
+//   - added headings can take a name prefix (e.g. "NORPA · Phase 1")
+//  The result is a new combined programme. Neither original file is changed
+//  and the link is dropped: Save JSON asks where to save it.
+// ═══════════════════════════════════════════════════════
+const PROJ_SEP=' · ';
+let combinedPending=false;   // a combined programme not yet saved to a file of its own
+function fileStem(name){ return String(name||'').replace(/\.json$/i,'').replace(/[-_ ]?\d{4}-\d\d-\d\d$/,'').trim(); }
+function parseDepNums(v){ return String(v==null?'':v).split(',').map(x=>parseInt(String(x).trim(),10)).filter(n=>Number.isFinite(n)&&n>=1); }
+// a: this programme (with its figures written in), b: the added one.
+// order: heading id -> screen position for a's headings.
+function mergeProgrammes(a, b, prefix, order){
+  const out=JSON.parse(JSON.stringify(a));
+  out.tasks=Array.isArray(out.tasks)?out.tasks:[];
+  const isH=t=>t&&t.type==='heading';
+  const nA=out.tasks.filter(t=>t&&!isH(t)).length;
+  let next=Math.max(0,...out.tasks.map(t=>+(t&&t.id)).filter(Number.isFinite))+1;
+  const bTasks=JSON.parse(JSON.stringify(Array.isArray(b.tasks)?b.tasks:[])).filter(t=>t&&typeof t==='object');
+  const nB=bTasks.filter(t=>!isH(t)).length;
+  // New ids go by position, so tasks with a missing or repeated id still
+  // get one each. References (heading, invoicing milestone) follow the
+  // first task with that id.
+  const newIds=bTasks.map(()=>next++), idmap=new Map();
+  bTasks.forEach((t,i)=>{ if(t.id!=null && !idmap.has(String(t.id))) idmap.set(String(t.id), newIds[i]); });
+  // A dependency on a row that does not exist was ignored on its own; after
+  // merging it would point at the other project's tasks, so it is dropped.
+  out.tasks.forEach(t=>{ if(t && !isH(t) && t.deps!=null && t.deps!=='') t.deps=parseDepNums(t.deps).filter(n=>n<=nA).join(','); });
+  const bHeadIds=new Set(bTasks.filter(isH).map(t=>String(t.id)));
+  // Screen order: this programme's headings as they are now, then the
+  // added ones in their own order
+  out.tasks.filter(isH).forEach(t=>{ if(order.has(t.id)){ t.forecast=t.forecast&&typeof t.forecast==='object'?t.forecast:{}; t.forecast.order=order.get(t.id); } });
+  const nAH=out.tasks.filter(isH).length;
+  const bHeads=bTasks.filter(isH).map((t,i)=>({t, key:(t.forecast&&Number.isFinite(t.forecast.order))?t.forecast.order:i, i}))
+    .sort((x,y)=>x.key-y.key||x.i-y.i);
+  bHeads.forEach((x,k)=>{ x.t.forecast=x.t.forecast&&typeof x.t.forecast==='object'?x.t.forecast:{}; x.t.forecast.order=nAH+k; });
+  const pre=String(prefix||'').trim();
+  bTasks.forEach((t,i)=>{
+    t.id=newIds[i];
+    if(isH(t)){
+      const nm=String(t.name||'').trim();
+      if(pre && !nm.startsWith(pre+PROJ_SEP)) t.name=pre+PROJ_SEP+nm; else t.name=nm;
+      const f=t.forecast;
+      ['billing','hoursPerDay','utilisation','collapsedInTotals'].forEach(k=>delete f[k]);
+      if(Array.isArray(f.invMilestones)) f.invMilestones=f.invMilestones.filter(m=>m&&idmap.has(String(m.id))).map(m=>({...m, id:idmap.get(String(m.id))}));
+    } else {
+      if(t.headingId!=null){ if(bHeadIds.has(String(t.headingId))) t.headingId=idmap.get(String(t.headingId)); else delete t.headingId; }
+      if(t.deps!=null && t.deps!=='') t.deps=parseDepNums(t.deps).filter(n=>n<=nB).map(n=>n+nA).join(',');
+    }
+    out.tasks.push(t);
+  });
+  return {doc:out, added:bHeads.length, tasks:nB, idFrom:newIds.length?newIds[0]:0};
+}
+// What the added file had that is not brought across
+function mergeDifferences(b){
+  const out=[], heads=(b.tasks||[]).filter(t=>t&&t.type==='heading'), fp=k=>{ const h=heads.find(x=>x.forecast&&x.forecast[k]!=null); return h?h.forecast[k]:null; };
+  const bb=fp('billing'), bBill=bb?sanitiseBilling(bb):{...BILLING_DEFAULT};
+  if(JSON.stringify(bBill)!==JSON.stringify(sanitiseBilling(billing))){
+    const keep=billing; billing=bBill; const txt=billingShort(); billing=keep;
+    out.push(`its billing period (${escHtml(txt)}); this programme's (${escHtml(billingShort())}) is used`);
+  }
+  const bh=fp('hoursPerDay'), bHpd=bh!=null?sanitiseHpd(bh):HPD_DEFAULT;
+  if(bHpd!==hoursPerDay) out.push(`its hours per day (${fmtNum(bHpd)}); ${fmtNum(hoursPerDay)} is used`);
+  const bu=fp('utilisation'), bUtil=bu!=null?sanitiseUtil(bu):UTIL_DEFAULT;
+  if(bUtil!==utilisation) out.push(`its utilisation (${fmtNum(bUtil)}%); ${fmtNum(utilisation)}% is used`);
+  const bc=heads.some(x=>x.forecast&&x.forecast.collapsedInTotals===true);
+  if(bc!==collapsedInTotals) out.push(bc?'counting its collapsed headings in the totals; here they are left out':'leaving its collapsed headings out of the totals; here they are counted');
+  // Calendar: only days this calendar treats differently
+  const bo=(b.workdayOverrides&&typeof b.workdayOverrides==='object')?b.workdayOverrides:{};
+  const days=Object.keys(bo).filter(d=>isoDate(d)).sort();
+  const off=days.filter(d=>bo[d]===false && isWorkday(d)), on=days.filter(d=>bo[d]===true && !isWorkday(d));
+  if(off.length) out.push(`its non-working days, worked here: ${off.map(d=>escHtml(fmtDisplay(d))).join(', ')}`);
+  if(on.length) out.push(`its extra working days, not worked here: ${on.map(d=>escHtml(fmtDisplay(d))).join(', ')}`);
+  return out;
+}
+async function addProject(){
+  if(!programmeDoc){
+    showMessage('Open a programme first', `<p>Import JSON to open the programme to add to. Its settings (billing period, calendar, hours per day) are the ones the combined programme keeps.</p>`);
+    return;
+  }
+  const go=await showChoice('Add another project',
+    `<p>Adds another programme's headings, tasks and figures to <strong>${escHtml(programmeSource||'this programme')}</strong>, so resourcing and invoicing can be seen across projects.</p>
+     <p style="margin-top:8px">This makes a <strong>new combined programme</strong>. Neither original file is changed, and the link to ${escHtml(programmeSource||'this file')} is dropped: <strong>Save JSON</strong> then asks where to save the combined file, and links to that.</p>
+     <p style="margin-top:8px">This programme's settings stay (billing period, calendar, hours per day, utilisation). The added file's are not used.</p>
+     ${isDirty()?`<p style="margin-top:8px;color:#b45309">Changes on screen are not saved to ${escHtml(programmeSource)}. They go into the combined programme only. To keep them in ${escHtml(programmeSource)} too, Cancel and Save JSON first.</p>`:''}`,
+    [{label:'Cancel',value:false},{label:'Choose the project file…',value:true,primary:true}]);
+  if(!go) return;
+  try{
+    if(window.showOpenFilePicker){
+      const [handle]=await window.showOpenFilePicker({types:[{description:'Programme JSON',accept:{'application/json':['.json']}}],multiple:false});
+      const file=await handle.getFile();
+      await addProjectFromText(await readFileText(file), file.name);
+      return;
+    }
+  }catch(e){ if(e.name!=='AbortError') showMessage('Could not open file', `<p>${escHtml(e.message)}</p>`); return; }
+  const inp=document.createElement('input'); inp.type='file'; inp.accept='.json,application/json';
+  inp.onchange=async e=>{ const f=e.target.files[0]; if(f) await addProjectFromText(await readFileText(f), f.name); };
+  inp.click();
+}
+async function addProjectFromText(text, name){
+  let b;
+  try{ b=JSON.parse(text); }catch(err){ showMessage('Could not read file', `<p>${escHtml(name)} is not valid JSON.</p>`); return; }
+  if(!b || !Array.isArray(b.tasks)){ showMessage('Not a programme file', `<p>${escHtml(name)} is not a Gantt tool export.</p>`); return; }
+  const bHeads=b.tasks.filter(t=>t&&t.type==='heading');
+  if(!bHeads.length){ showMessage('No headings found', `<p>${escHtml(name)} has no headings, so there is nothing to add to the forecast.</p>`); return; }
+  const bTitle=typeof b.projectTitle==='string'&&b.projectTitle.trim()?b.projectTitle.trim():fileStem(name);
+  // Already in? Every added heading name matches one here, as it is or
+  // after a project prefix (a project added before).
+  const aNames=allHeadings().map(h=>normName(h.name));
+  const inA=n=>aNames.some(x=>x===n || x.endsWith(PROJ_SEP.toLowerCase()+n));
+  const same = bHeads.every(t=>inA(normName(t.name)));
+  const diffs=mergeDifferences(b);
+  // People who are in both, so their time adds together
+  const people=resLists=>{ const m=new Map(); resLists.forEach(list=>list.forEach(r=>{ const k=personKey(r); if(k&&!m.has(k)) m.set(k,personName(r)); })); return m; };
+  const aP=people(allHeadings().map(h=>h.resources||[])), both=[...people(bHeads.map(t=>readForecastProp(t.forecast).resources))].filter(([k])=>aP.has(k)).map(([,n])=>n);
+  const ok=await showChoice('Combine programmes',
+    `${same?`<p style="color:#b45309;margin-bottom:8px">${escHtml(name)} looks like a programme that is already in this one (every heading name matches). Adding it again would double its figures.</p>`:''}
+     <p>Adding <strong>${escHtml(bTitle)}</strong>: ${bHeads.length} heading${bHeads.length!==1?'s':''} and ${b.tasks.length-bHeads.length} task${b.tasks.length-bHeads.length!==1?'s':''}, after this programme's.</p>
+     <label style="display:block;margin-top:10px;font-size:12px;color:#4a4842">Name the added headings with<br>
+       <input id="merge-prefix" type="text" value="${escHtml(bTitle)}" maxlength="60" spellcheck="false" autocomplete="off" style="width:100%;margin-top:4px;padding:6px 9px;border:1px solid #c8c4bc;border-radius:4px;font-size:13px;font-family:var(--font)"
+         onkeydown="if(event.key==='Enter'){event.preventDefault();const p=document.querySelector('#msg-buttons .primary'); if(p) p.click();}"></label>
+     <div class="muted" style="font-size:11px;margin-top:4px">e.g. "${escHtml(bTitle)}${PROJ_SEP}${escHtml(String(bHeads[0].name||'').trim())}". Leave blank to keep the names as they are.</div>
+     ${both.length?`<p style="margin-top:10px">In both projects, their time adds together: ${both.map(escHtml).join(', ')}.</p>`:''}
+     ${diffs.length?`<p style="margin-top:10px">Not brought across from ${escHtml(bTitle)}:</p><ul>${diffs.map(d=>`<li>${d}</li>`).join('')}</ul>`:''}`,
+    [{label:'Cancel',value:false},{label:'Combine',value:true,primary:!same}]);
+  if(!ok) return;
+  const prefix=(document.getElementById('merge-prefix')||{}).value||'';
+  const order=new Map(displayHeadings().map((h,n)=>[h.id,n]));
+  const {doc, added, tasks}=mergeProgrammes(buildDoc(programmeDoc), b, prefix, order);
+  // Load it as the open programme, keeping this programme's live settings
+  const keep={billing:{...billing}, hpd:hoursPerDay, util:utilisation, cit:collapsedInTotals};
+  workdayOverrides = doc.workdayOverrides ? {...doc.workdayOverrides} : {};
+  const {list}=headingsFromGantt(doc);
+  billing=keep.billing; _billCache.sig=''; hoursPerDay=keep.hpd; utilisation=keep.util; collapsedInTotals=keep.cit;
+  const combinedName=(fileStem(programmeSource)+' + '+fileStem(name)).slice(0,120)+'.json';
+  adoptProgramme(doc, list, combinedName, null, 0);
+  resetUndo(); updateUndoIndicator();
+  combinedPending=true;
+  savedFiguresSig='(combined, not saved yet)';
+  updateSaveMarker(); updateFileStatus();
+  showMessage('Programmes combined',
+    `<p>Added ${added} heading${added!==1?'s':''} and ${tasks} task${tasks!==1?'s':''} from ${escHtml(bTitle)}.</p>
+     <p style="margin-top:8px">This combined programme is <strong>not saved yet</strong>. Save JSON asks where to save it (suggested name: ${escHtml(combinedName)}) and links to that file. It opens in the Gantt tool too.</p>
+     ${diffs.length?`<p style="margin-top:8px" class="muted">This programme's settings are used for everything, including the added headings.</p>`:''}`);
+}
+
 
 // ═══════════════════════════════════════════════════════
 //  EXCEL EXPORT: one formatted sheet in three sections
@@ -5882,6 +6132,7 @@ function openSettings(){
   document.getElementById('set-hpd').value=hoursPerDay;
   document.getElementById('set-util').value=utilisation;
   document.getElementById('set-nonwork').checked=showNonWorkBands;
+  document.getElementById('set-cit').checked=collapsedInTotals;
   const anyHourly=allHeadings().some(isHourly);
   document.getElementById('set-util').disabled=!anyHourly;
   document.getElementById('set-util-wrap').classList.toggle('off',!anyHourly);
@@ -5940,8 +6191,10 @@ function applySettings(){
   uEl.classList.remove('invalid');
   const util=uEl.disabled?utilisation:sanitiseUtil(uv);
   closeSettings();
+  const cit=document.getElementById('set-cit').checked, citChanged=cit!==collapsedInTotals;
   const billChanged=JSON.stringify(b)!==JSON.stringify(billing), hpdChanged=hpd!==hoursPerDay, utilChanged=util!==utilisation;
-  if(!billChanged && !hpdChanged && !utilChanged) return;
+  if(!billChanged && !hpdChanged && !utilChanged && !citChanged) return;
+  collapsedInTotals=cit;
   if(billChanged){ billing=b; _billCache.sig=''; if(breakdownPref!=='billing') breakdownPref='billing'; }
   hoursPerDay=hpd; utilisation=util;
   refresh();
@@ -5949,6 +6202,7 @@ function applySettings(){
   if(billChanged) msg.push(`Billing period: ${billingFreqName().toLowerCase()}, invoiced on ${billingDayText()}.`);
   if(hpdChanged) msg.push(`Hours per day: ${fmtNum(hoursPerDay)}. Time entered in days follows it.`);
   if(utilChanged) msg.push(`Utilisation: ${fmtNum(utilisation)}% of hours billed on hourly-rates headings.`);
+  if(citChanged) msg.push(collapsedInTotals?'Collapsed headings now count in the totals.':'Collapsed headings are now left out of the totals.');
   flashStatus(msg.join(' '));
 }
 
