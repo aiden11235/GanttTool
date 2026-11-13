@@ -1945,6 +1945,15 @@ function getGanttRange() {
     (h.milestones||[]).forEach(m=>take(m.date,m.date));
     (h.resources||[]).forEach(x=>x.bars.concat(x.actuals).forEach(a=>take(a.start,a.end)));
   });
+  // Collapsed headings keep their timeline on the chart; their figures too
+  // when they count in the totals
+  hiddenHeadings.forEach(h => {
+    (h.segments||[]).forEach(s=>take(s.start,s.end));
+    if(!collapsedInTotals) return;
+    (h.actuals||[]).forEach(a=>take(a.start,a.end));
+    (h.resources||[]).forEach(x=>(x.bars||[]).concat(x.actuals||[]).forEach(a=>take(a.start,a.end)));
+    ((h.expenses||{}).plan||[]).concat((h.expenses||{}).actual||[]).forEach(a=>take(a.start,a.end));
+  });
   if (!minD) minD=new Date();
   minD=dayStart(minD);
   maxD = maxD ? dayStart(maxD) : addDay(minD, 90);
@@ -2023,10 +2032,20 @@ function rowSpecs(i, r){
   out.push({kind:'e',rk:i+'e',ht:laneRowHeight(lanesOf((h.expenses||{}).actual||[]).count)});   // expenses: forecast bars on top, actuals beneath
   return out;
 }
-// Hidden headings stay in place as one collapsed heading row each
-function totalRowCount(){ return headings.reduce((s,h,i)=>s+rowSpecs(i,null).length,0)+hiddenHeadings.length; }
+// Hidden headings stay in place as a collapsed group: the heading row with
+// its timeline bar, then (when collapsed headings count in the totals) one
+// summary row each for Budget, Invoicing and Cost
+function collapsedSpecs(h){
+  const out=[{kind:'h',rk:'hid'+h.id,ht:ROW_H}];
+  if(collapsedInTotals) ['b','i','k'].forEach(k=>out.push({kind:k,rk:'hid'+h.id+k,ht:ROW_H}));
+  return out;
+}
+// The forecast row of a collapsed heading (only built when it counts in the totals)
+function collapsedRow(fc,h){ return collapsedInTotals && fc ? (fc.rows.find(r=>r.h===h)||null) : null; }
+function totalRowCount(){ return headings.reduce((s,h,i)=>s+rowSpecs(i,null).length,0)+hiddenHeadings.reduce((s,h)=>s+collapsedSpecs(h).length,0); }
 function contentHeight(){
-  return headings.reduce((s,h,i)=>s+rowSpecs(i,null).reduce((t,x)=>t+x.ht,0),0)+hiddenHeadings.length*ROW_H;
+  return headings.reduce((s,h,i)=>s+rowSpecs(i,null).reduce((t,x)=>t+x.ht,0),0)
+    +hiddenHeadings.reduce((s,h)=>s+collapsedSpecs(h).reduce((t,x)=>t+x.ht,0),0);
 }
 // Every heading in screen order, shown and hidden
 function displayHeadings(){ return sortForForecast(allHeadings()); }
@@ -2034,7 +2053,19 @@ function displayHeadings(){ return sortForForecast(allHeadings()); }
 // showing and dragging keep every heading where it is
 function freezeOrder(list){ (list||displayHeadings()).forEach((h,n)=>{ h.order=n; }); }
 const CHEVRON=up=>`<svg width="11" height="11" viewBox="0 0 12 12" aria-hidden="true"><polyline points="${up?'2.5,8 6,4.5 9.5,8':'2.5,4.5 6,8 9.5,4.5'}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
-function collapsedLeftRow(h){
+function collapsedLeftRow(h, fc){
+  const frag=document.createDocumentFragment();
+  const r=collapsedRow(fc,h);
+  const menu=e=>{ e.preventDefault(); document.getElementById('ctx-title').textContent=h.name; showMenu(e,[`<div class="ctx-item" onclick="closeCtx();showHeadings([hiddenHeadings.find(x=>x.id===${JSON.stringify(h.id)})])">↺ Show this heading</div>`]); };
+  // Two figures beside the heading: total fee and projected profit (read only)
+  let fee='';
+  if(r){
+    const invT=r.invTotal, cost=Math.round(r.costToDate+r.costRemaining), profit=invT-cost;
+    fee=`<div class="hfee-line"><i class="fee-cap">${isHourly(h)?'Hourly':'Total fee'}</i>
+        <input class="fee-input derived" type="text" readonly tabindex="-1" value="${r.cents?money2(r.cents):''}" placeholder="$0.00" style="color:${h.color}" title="Total fee. Show the heading to change it.">`
+      +`</div>`
+      +((invT||cost)?`<div class="hfee-line hfee-profit" title="Projected profit: total invoicing (${money2(invT)}) less total cost (${money2(cost)}: resourcing and expenses)"><i class="fee-cap">Projected profit</i><span class="hprofit${profit<0?' neg':''}">${money2(profit)}</span></div>`:'');
+  }
   const row=document.createElement('div');
   row.className='heading-row heading-hidden';
   row.dataset.rk='hid'+h.id; row.dataset.hid=h.id;
@@ -2045,17 +2076,98 @@ function collapsedLeftRow(h){
     <div class="task-cell" style="justify-content:center"><span class="heading-color-btn" style="background:${h.color};cursor:default"></span></div>
     <div class="task-cell" style="overflow:hidden"><div class="heading-name" title="${escHtml(h.name)}">${escHtml(h.name)||'<span style="opacity:.5">(unnamed heading)</span>'}</div></div>
     <div class="task-cell"><span class="hid-note">${collapsedInTotals?'Collapsed · in totals':'Hidden · not in totals'}</span></div>
-    <div class="task-cell"></div><div class="task-cell"></div>`;
+    <div class="task-cell fee-cell hfee">${fee}</div><div class="task-cell"></div>`;
   row.querySelector('.hid-toggle').addEventListener('click',()=>showHeadings([h]));
-  row.addEventListener('contextmenu',e=>{ e.preventDefault(); document.getElementById('ctx-title').textContent=h.name; showMenu(e,[`<div class="ctx-item" onclick="closeCtx();showHeadings([hiddenHeadings.find(x=>x.id===${JSON.stringify(h.id)})])">↺ Show this heading</div>`]); });
-  return row;
+  row.addEventListener('contextmenu',menu);
+  frag.appendChild(row);
+  // Summary rows: the row title only, no figures (they are on the chart)
+  if(r) collapsedSpecs(h).slice(1).forEach(spec=>{
+    const sp=headingSpan(h);
+    const info = spec.kind==='b' ? (sp.start?`From ${fmtDisplay(sp.start)} to ${fmtDisplay(sp.end)}`:'No dated work in the programme')
+               : spec.kind==='i' ? (r.days?`${r.days} working day${r.days!==1?'s':''}`:'') : '';
+    const sr=document.createElement('div');
+    sr.className='task-row collapsed-sub';
+    sr.dataset.rk=spec.rk; sr.dataset.hid=h.id;
+    sr.style.height=spec.ht+'px';
+    sr.innerHTML=`
+      <div class="heading-stripe" style="background:${h.color}"></div>
+      <div class="task-cell"></div><div class="task-cell"></div><div class="task-cell"></div>
+      <div class="task-cell" style="overflow:hidden"><div class="sub-info">${info}</div></div>
+      <div class="task-cell" style="overflow:hidden"><div class="sub-title">${SUB_NAMES[spec.kind]}</div></div>
+      <div class="task-cell"></div><div class="task-cell"></div>`;
+    sr.addEventListener('contextmenu',menu);
+    frag.appendChild(sr);
+  });
+  return frag;
 }
-function collapsedGanttRow(h){
+function collapsedGanttRow(h, fc){
+  const frag=document.createDocumentFragment();
+  const r=collapsedRow(fc,h), mode=fc?fc.mode:'billing';
+  const menu=e=>{ e.preventDefault(); hideTooltip(); document.getElementById('ctx-title').textContent=h.name; showMenu(e,[`<div class="ctx-item" onclick="closeCtx();showHeadings([hiddenHeadings.find(x=>x.id===${JSON.stringify(h.id)})])">↺ Show this heading</div>`]); };
+  const segX=(h.segments||[]).map(seg=>{
+    const x=xForDate(seg.start), x2=xForDate(seg.end)+pxPerDay;
+    return {seg, x0:x, x1:x+Math.max(8,x2-x)};
+  });
+  const spanTip=()=>{
+    if(r) return barTip(r);
+    const sp=headingSpan(h), n=headingWorkdays(h).length;
+    return `<strong>${escHtml(h.name)}</strong><br>${sp.start?`${fmtDisplay(sp.start)} to ${fmtDisplay(sp.end)}<br>${n} working day${n!==1?'s':''}`:'No dated work in the programme'}`
+      +`<br><span style="opacity:.6;font-style:italic">Hidden and left out of the totals</span>`;
+  };
+  // Heading row: the heading's timeline bar, no milestones
   const row=document.createElement('div');
   row.className='gantt-heading-row heading-hidden';
   row.dataset.rk='hid'+h.id; row.dataset.hid=h.id;
   row.style.background=lightenHex(h.color,0.07);
-  return row;
+  segX.forEach(sg=>{
+    const bar=document.createElement('div');
+    bar.className='gantt-heading-bar';
+    bar.style.left=sg.x0+'px'; bar.style.width=(sg.x1-sg.x0)+'px';
+    bar.style.background=lightenHex(h.color,0.55);
+    attachTip(bar,spanTip);
+    row.appendChild(bar);
+  });
+  row.addEventListener('contextmenu',menu);
+  frag.appendChild(row);
+  if(!r) return frag;
+  // Summary rows: Budget and Invoicing bars with a figure per period, Cost as cells
+  const ink=textOn(h.color), tickCol = ink==='#ffffff' ? 'rgba(255,255,255,.4)' : 'rgba(0,0,0,.18)';
+  collapsedSpecs(h).slice(1).forEach(spec=>{
+    const kind=spec.kind;
+    if(kind==='k'){
+      const cr=drawCostRow(r, 0, spec, mode);
+      delete cr.dataset.idx; cr.dataset.hid=h.id;
+      cr.classList.remove('tall'); cr.style.height=spec.ht+'px';
+      cr.addEventListener('contextmenu',menu);
+      frag.appendChild(cr); return;
+    }
+    const sr=document.createElement('div');
+    sr.className='gantt-row collapsed-sub';
+    sr.dataset.rk=spec.rk; sr.dataset.hid=h.id;
+    sr.style.height=spec.ht+'px';
+    segX.forEach(sg=>{
+      const bar=document.createElement('div');
+      bar.className='gantt-bar';
+      bar.style.left=sg.x0+'px'; bar.style.width=(sg.x1-sg.x0)+'px';
+      bar.style.background=h.color;
+      addPeriodTicks(bar, sg, mode, tickCol);
+      if(kind==='i') coverInvoiced(bar, sg, h);
+      attachTip(bar,()=>barTip(r));
+      sr.appendChild(bar);
+    });
+    if(kind==='b') drawPeriodLabels(sr, r, segX, r.periods, mode, 'b');
+    else {
+      // Total invoicing per period: actual invoices, forecast and recoverable expenses
+      const m=new Map();
+      r.inv.forEach((p,key)=>{ const c=p.cents+(p.rec||0); if(c) m.set(key,{cents:c, fee:p.cents, free:p.freeCents, rec:p.rec||0}); });
+      drawPeriodLabels(sr, r, segX, m, mode, 'si');
+      // A period invoiced in full sits on the lightened part of the bar, so its figure takes the heading colour
+      sr.querySelectorAll('.fee-label:not(.pill)').forEach(l=>{ const q=m.get(l.dataset.key); if(q && !q.free && q.fee) l.style.color=h.color; });
+    }
+    sr.addEventListener('contextmenu',menu);
+    frag.appendChild(sr);
+  });
+  return frag;
 }
 function rowsHeight(){ return Math.max(contentHeight(),200); }
 
@@ -2088,7 +2200,7 @@ function renderLeft() {
   const fc = currentForecast || buildForecast(breakdownView);
   const todayTxt = fmtDisplay(todayStr());
   displayHeadings().forEach(h=>{
-    if(h.excluded){ body.appendChild(collapsedLeftRow(h)); return; }
+    if(h.excluded){ body.appendChild(collapsedLeftRow(h, fc)); return; }
     const i=headings.indexOf(h);
     const r=fc.rows[i];
     const {start,end}=headingSpan(h);
@@ -2518,7 +2630,7 @@ function renderGanttBars(totalPx,fc) {
   const mode=fc.mode;
 
   displayHeadings().forEach(hh=>{
-    if(hh.excluded){ ganttRows.appendChild(collapsedGanttRow(hh)); return; }
+    if(hh.excluded){ ganttRows.appendChild(collapsedGanttRow(hh, fc)); return; }
     const i=headings.indexOf(hh), r=fc.rows[i];
     const h=r.h;
     const segX=(h.segments||[]).map(seg=>{
@@ -2675,7 +2787,7 @@ function drawPeriodLabels(row, r, segX, map, mode, kind){
     // covered by an invoice in full is blank; one covered in part shows what
     // is left of it. Actual amounts live in the invoice boxes below the bar.
     const val = kind==='i' ? p.freeCents+(p.rec||0) : p.cents;
-    if(!val) return;
+    if(!val) return;   // ('si' = a collapsed heading's Invoicing: the period's total)
     const b=periodBounds(key,mode);
     const px0=xForDate(b.start), px1=xForDate(b.next);
     let cx0=0, cx1=0;
@@ -2767,6 +2879,15 @@ function drawActualTags(row, r, map, mode){
 
 function labelTip(r,key,mode,kind,p){
   const h=r.h, b=periodBounds(key,mode), C=r.cents;
+  if(kind==='si'){
+    const inv=p.fee-p.free;
+    let t=`<strong>${escHtml(h.name)}</strong><br>Invoicing, ${escHtml(periodName(key,mode,true))}<br>${fmtDisplay(b.start)} to ${fmtDisplay(b.end)}<br><strong>${money2(p.cents)}</strong> total`;
+    if(inv) t+=`<br><span style="opacity:.75">Invoiced ${money2(inv)}</span>`;
+    if(p.free) t+=`<br><span style="opacity:.75">Forecast ${money2(p.free)}</span>`;
+    if(p.rec) t+=`<br><span style="opacity:.75">Recoverable expenses ${money2(p.rec)}</span>`;
+    if(C && !r.a.hourly) t+=`<br>${fmtPct(invPctBy(r.a,b.end))} complete by the end of this ${unitName(mode)}`;
+    return t+`<br><span style="opacity:.6;font-style:italic">Collapsed heading. Show it to change invoices.</span>`;
+  }
   let html=`<strong>${escHtml(h.name)}</strong><br>${SUB_NAMES[kind]}, ${escHtml(periodName(key,mode,true))}`
     +`<br>${fmtDisplay(b.start)} to ${fmtDisplay(b.end)}`;
   const bp=r.periods.get(key), bc=bp?bp.cents:0;
@@ -2816,7 +2937,7 @@ function renderTodayLine(totalPx) {
   const x=xForDate(fmt(new Date()));
   const line=document.getElementById('today-line');
   const label=document.getElementById('today-label');
-  if(x>=0&&x<=totalPx&&headings.length){
+  if(x>=0&&x<=totalPx&&(headings.length||hiddenHeadings.length)){
     line.style.left=x+'px'; line.style.height=rowsHeight()+'px'; line.style.display='block';
     label.style.left=x+'px'; label.style.display='block';
   } else { line.style.display='none'; label.style.display='none'; }
