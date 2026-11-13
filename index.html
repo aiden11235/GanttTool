@@ -3101,10 +3101,18 @@ function insertTask(atIdx, milestone) {
   });
   refresh();
   // Focus the name field of the newly inserted row for immediate editing
+  focusTaskName(newTask.id);
+}
+// Select a task's name for editing, found by its id after the redraw. Rows
+// are matched on data-idx (the task's place in the list); counting
+// '.task-row' elements instead skipped heading rows and landed a few rows
+// further down.
+function focusTaskName(id){
   setTimeout(()=>{
-    const rows=document.querySelectorAll('.task-row');
-    const row=rows[atIdx];
-    if(row){const ni=row.querySelector('.task-name-input');if(ni){ni.focus();ni.select();}}
+    const i=tasks.findIndex(t=>t.id===id); if(i<0) return;
+    const row=document.querySelector(`.task-row[data-idx="${i}"]`);
+    const ni=row && row.querySelector('.task-name-input');
+    if(ni){ row.scrollIntoView({block:'nearest'}); ni.focus(); ni.select(); }
   },40);
 }
 
@@ -3127,6 +3135,7 @@ function ctxDuplicate(){
   });
   refresh();
   closeCtx();
+  focusTaskName(copy.id);
 }
 function ctxDelete(){
   if(ctxIdx<0){closeCtx();return;}
@@ -3227,12 +3236,10 @@ function addRow(milestone) {
     if(lastEnd){let d=new Date(lastEnd+'T00:00:00');d.setDate(d.getDate()+1);while(!isWorkday(d))d.setDate(d.getDate()+1);start=fmt(d);}
   }
   const end=milestone?start:addWorkdays(start,5);
-  tasks.push({id:nextId++,name:milestone?'Milestone':'New task',start,end,duration:milestone?0:5,deps:'',milestone:!!milestone,progress:0});
+  const nt={id:nextId++,name:milestone?'Milestone':'New task',start,end,duration:milestone?0:5,deps:'',milestone:!!milestone,progress:0};
+  tasks.push(nt);
   refresh();
-  setTimeout(()=>{
-    const inputs=document.querySelectorAll('.task-name-input');
-    if(inputs.length){inputs[inputs.length-1].focus();inputs[inputs.length-1].select();}
-  },50);
+  focusTaskName(nt.id);
 }
 
 function deleteTask(idx) {
