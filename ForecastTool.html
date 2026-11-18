@@ -2199,6 +2199,10 @@ function oneFig(v, tip){ return `<div class="one-fig${v<0?' neg':''}"${cv(v)} ti
 const CT=' (Ctrl+click to copy the number)';
 function cv(cents){ return ` data-v="${Math.round(cents)}"`; }
 function plainNumber(cents){ return String(Math.round(cents)/100); }
+// Time is copied as decimal days (hours / hours per day), no units
+function dv(hours){ return ` data-v="${Math.round((+hours||0)/hoursPerDay*10000)/10000}" data-unit="d"`; }
+function setDays(el, hours){ el.dataset.v=Math.round((+hours||0)/hoursPerDay*10000)/10000; el.dataset.unit='d'; }
+function copyText(el){ return el.dataset.unit==='d' ? String(+el.dataset.v) : plainNumber(+el.dataset.v); }
 async function copyPlain(text){
   try{ await navigator.clipboard.writeText(text); return true; }
   catch(e){
@@ -2217,13 +2221,19 @@ function showCopied(x,y){
 }
 document.addEventListener('mousedown',e=>{
   if(e.button!==0 || !(e.ctrlKey||e.metaKey)) return;
-  const el=e.target.closest && e.target.closest('[data-v]'); if(!el) return;
+  const el=e.target.closest && e.target.closest('[data-v]'); if(!el || el.dataset.drag) return;
   e.preventDefault(); e.stopPropagation();
-  copyPlain(plainNumber(+el.dataset.v)).then(ok=>{ if(ok) showCopied(e.clientX,e.clientY); });
+  copyPlain(copyText(el)).then(ok=>{ if(ok) showCopied(e.clientX,e.clientY); });
 },true);
 // Ctrl+click is a right-click on a Mac: no menu over a figure
 document.addEventListener('contextmenu',e=>{ if(e.ctrlKey && e.button===0 && e.target.closest && e.target.closest('[data-v]')) { e.preventDefault(); e.stopPropagation(); } },true);
-document.addEventListener('click',e=>{ if((e.ctrlKey||e.metaKey) && e.target.closest && e.target.closest('[data-v]')){ e.preventDefault(); e.stopPropagation(); } },true);
+document.addEventListener('click',e=>{ const el=(e.ctrlKey||e.metaKey) && e.target.closest && e.target.closest('[data-v]'); if(el && !el.dataset.drag){ e.preventDefault(); e.stopPropagation(); } },true);
+// Draggable boxes and bars: Ctrl+click without moving copies the figure
+function ctrlCopyOnRelease(me, el){
+  if(!el || el.dataset.v==null || !(me.ctrlKey||me.metaKey)) return false;
+  copyPlain(copyText(el)).then(ok=>{ if(ok) showCopied(me.clientX,me.clientY); });
+  return true;
+}
 
 function renderLeft() {
   const body = document.getElementById('left-body');
@@ -2383,7 +2393,7 @@ function renderLeftTotals(fc){
   host.innerHTML=fc.people.map((pp,n)=>`<div class="left-totals res-sum${n===0?' first':''}">${blank}
       <div class="lt-cell"><span class="res-sum-name" title="${escHtml(resLabel(pp.res))}">${escHtml(resLabel(pp.res))}</span>${pp.over.size?`<span class="over-badge" title="Weeks where this person is assigned more time than the week's working days">⚠ ${pp.over.size} week${pp.over.size!==1?'s':''} over</span>`:''}</div>
       <div class="lt-cell"></div>
-      <div class="lt-cell lt-total" title="Total time across all headings and periods">${fmtLoad(pp.total)}</div>
+      <div class="lt-cell lt-total"${dv(pp.total)} title="Total time across all headings and periods${CT.replace('number','days')}">${fmtLoad(pp.total)}</div>
       <div class="lt-cell"></div></div>`).join('');
 }
 
@@ -2530,7 +2540,7 @@ function renderGanttHeader(minD,maxD,totalPx,fc) {
       const show=c=>fc.mode==='weekly' ? money0(c) : fitText(c,p.x1-p.x0,TOTAL_FONT_PX,TOTAL_WEIGHT);
       if(kind==='b' || kind==='c'){
         if(!cents) cell.classList.add('is-zero');
-        else cell.textContent = show(cents);
+        else { cell.textContent = show(cents); cell.dataset.v=Math.round(cents); }
         attachTip(cell,()=>totalTip(fc,p,cents,kind));
       } else {
         // Remaining on top, actual invoices beneath (boxed, like the row)
@@ -2538,6 +2548,8 @@ function renderGanttHeader(minD,maxD,totalPx,fc) {
         const act=fc.actTotals.get(p.key)||0;
         const top=document.createElement('span'); top.className='tc-rem'; top.textContent = cents ? show(cents) : '';
         const bot=document.createElement('span'); bot.className='tc-act'+(act?'':' empty'); bot.textContent = act ? show(act) : '';
+        if(cents) top.dataset.v=Math.round(cents);
+        if(act) bot.dataset.v=Math.round(act);
         cell.appendChild(top); cell.appendChild(bot);
         if(cents) attachTip(top,()=>totalTip(fc,p,cents,'i'));
         if(act) attachTip(bot,()=>totalTip(fc,p,act,'a'));
@@ -2556,7 +2568,7 @@ function renderGanttHeader(minD,maxD,totalPx,fc) {
     weeks.forEach(p=>{
       const q=pp.periods.get(p.key); if(!q || q.hours<=1e-9) return;
       const cell=document.createElement('div'); cell.className='total-cell load-cell';
-      cell.dataset.key=p.key;
+      cell.dataset.key=p.key; setDays(cell,q.hours);
       cell.style.left=p.x0+'px'; cell.style.width=(p.x1-p.x0)+'px';
       const t=fmtLoad(q.hours);
       cell.textContent = textWidth(t,LOAD_FONT_PX,LOAD_WEIGHT)+4<=p.x1-p.x0 ? t : '';
@@ -2840,7 +2852,7 @@ function drawPeriodLabels(row, r, segX, map, mode, kind){
     const lbl=document.createElement('div');
     lbl.className='fee-label';
     lbl.textContent=txt;
-    lbl.dataset.key=key;
+    lbl.dataset.key=key; lbl.dataset.v=Math.round(val);
     lbl.style.color=ink;
     if(kind==='i') lbl.style.top=INV_BAR_TOP+'px';
     if(hasPiece && tw+6<=cx1-cx0){
@@ -2876,7 +2888,7 @@ function drawActualTags(row, r, map, mode){
     const box=document.createElement('div');
     box.className='fee-label pill ovr inv-box';
     box.dataset.key=periodKey(actualLumpDate(a),mode);   // the period it counts in, in this view
-    box.dataset.ai=ai;
+    box.dataset.ai=ai; box.dataset.v=Math.round(a.cents); box.dataset.drag=1;
     box.style.left=(x0+1)+'px'; box.style.width=w+'px';
     box.style.top=(top0+lane[ai]*(ACT_LANE_H+ACT_LANE_GAP))+'px';
     box.style.border=`1px solid ${h.color}`;
@@ -3487,7 +3499,7 @@ function drawResTotalsRow(r, i, spec, mode){
     const cell=document.createElement('div');
     // Resourcing cost only, as plain figures (the Cost row above carries the total and the budget flag)
     cell.className='res-float';
-    cell.dataset.key=key;
+    cell.dataset.key=key; if(c) cell.dataset.v=c;
     cell.style.left=x0+'px'; cell.style.width=(x1-x0)+'px';
     cell.textContent = mode==='weekly' ? money0(c) : fitText(c,x1-x0,TOTAL_FONT_PX,TOTAL_WEIGHT);
     attachTip(cell,()=>resTotalsTip(r,key,mode));
@@ -3523,7 +3535,7 @@ function drawResourceRow(r, i, spec, mode){
     bar.className='gantt-bar res-bar';
     bar.style.left=x0+'px'; bar.style.width=w+'px'; bar.style.top=INV_BAR_TOP+'px';
     bar.style.background=h.color;
-    bar.dataset.bi=bi;
+    bar.dataset.bi=bi; { const bv=barVal(b); setDays(bar, bv.unit==='d' ? bv.v*hoursPerDay : bv.v); bar.dataset.drag=1; }
     // Parts covered by actual hours: lightened, and the figure moves past them
     let run=null;
     const covers=[];
@@ -3566,7 +3578,7 @@ function drawResourceRow(r, i, spec, mode){
     const w=Math.max(6,x1-x0-2);
     const box=document.createElement('div');
     box.className='fee-label pill ovr inv-box res-act-box';
-    box.dataset.ai=ai;
+    box.dataset.ai=ai; setDays(box, actHours(a)); box.dataset.drag=1;
     box.style.left=(x0+1)+'px'; box.style.width=w+'px';
     box.style.top=(INV_LANE_TOP+lane[ai]*(ACT_LANE_H+ACT_LANE_GAP))+'px';
     box.style.border=`1px solid ${h.color}`; box.style.color=h.color;
@@ -3850,7 +3862,7 @@ function startResBarDrag(e, i, k, bi, mode, barEl){
     dragTip(ev, ns, ne);
   }, (moved, me)=>{
     hideTooltip();
-    if(!moved){ if(mode==='move') editResBar(me,i,k,bi); return; }
+    if(!moved){ if(ctrlCopyOnRelease(me, barEl)) return; if(mode==='move') editResBar(me,i,k,bi); return; }
     if(ns===b.start && ne===b.end){ refresh(); return; }
     b.start=ns; b.end=ne;
     res.bars.sort((x,y)=>x.start<y.start?-1:1);
@@ -3964,7 +3976,7 @@ function startResActDrag(e, i, k, ai, mode, el){
     dragTip(ev, ns, ne);
   }, (moved, me)=>{
     hideTooltip();
-    if(!moved){ if(mode==='move') openResActualEdit(me,i,k,ai); return; }
+    if(!moved){ if(ctrlCopyOnRelease(me, el)) return; if(mode==='move') openResActualEdit(me,i,k,ai); return; }
     if(ns===a.start && ne===a.end){ refresh(); return; }
     a.start=ns; a.end=ne; a.mode=rangeMode(ns,ne);
     res.actuals.sort((x,y)=>x.start<y.start?-1:x.start>y.start?1:0);
@@ -3987,7 +3999,7 @@ function startInvDrag(e, idx, ai, mode, el){
     dragTip(ev, ns, ne, `<br>Dated ${fmtDisplay(lump)}, counted in ${escHtml(periodName(periodKey(lump,breakdownView),breakdownView,true))}`);
   }, (moved, me)=>{
     hideTooltip();
-    if(!moved){ if(mode==='move') openInvoiceEntry(me, {h}, ai); return; }
+    if(!moved){ if(ctrlCopyOnRelease(me, el)) return; if(mode==='move') openInvoiceEntry(me, {h}, ai); return; }
     if(ns===a.start && ne===a.end){ refresh(); return; }
     a.start=ns; a.end=ne; a.mode=rangeMode(ns,ne);
     h.actuals.sort((x,y)=>x.start<y.start?-1:x.start>y.start?1:0);
@@ -4452,7 +4464,7 @@ function drawCostRow(r, i, spec, mode){
     if(x1<=x0) return;
     const cell=document.createElement('div');
     cell.className='res-total-cell'+(costOver(r,key)?' over':'');
-    cell.dataset.key=key;
+    cell.dataset.key=key; cell.dataset.v=c;
     cell.style.left=x0+'px'; cell.style.width=(x1-x0)+'px';
     cell.textContent = mode==='weekly' ? money0(c) : fitText(c,x1-x0,TOTAL_FONT_PX,TOTAL_WEIGHT);
     attachTip(cell,()=>costTip(r,key,mode));
@@ -4521,7 +4533,7 @@ function drawExpenseRow(r, i, spec, mode){
     const bar=document.createElement('div');
     bar.className='gantt-bar res-bar exp-bar';
     bar.style.left=x0+'px'; bar.style.width=w+'px'; bar.style.top=INV_BAR_TOP+'px';
-    bar.style.background=h.color; bar.dataset.bi=bi;
+    bar.style.background=h.color; bar.dataset.bi=bi; bar.dataset.v=expSum(b.items).cost; bar.dataset.drag=1;
     let run=null; const covers=[];
     eachDay(b.start,b.end,d=>{ if(ex.covered.has(d)){ if(run) run.end=d; else run={start:d,end:d}; } else if(run){ covers.push(run); run=null; } });
     if(run) covers.push(run);
@@ -4548,7 +4560,7 @@ function drawExpenseRow(r, i, spec, mode){
     const w=Math.max(6,x1-x0-2);
     const box=document.createElement('div');
     box.className='fee-label pill ovr inv-box exp-act-box';
-    box.dataset.ai=ai;
+    box.dataset.ai=ai; box.dataset.v=expSum(a.items).cost; box.dataset.drag=1;
     box.style.left=(x0+1)+'px'; box.style.width=w+'px';
     box.style.top=(INV_LANE_TOP+lane[ai]*(ACT_LANE_H+ACT_LANE_GAP))+'px';
     box.style.border=`1px solid ${h.color}`; box.style.color=h.color;
@@ -4640,7 +4652,7 @@ function startExpDrag(e, i, kind, idx, mode, el){
     dragTip(ev,ns,ne,`<br>${expText(b.items)} · ${kind==='plan'?'forecast':'actual'}`);
   },(moved,me)=>{
     hideTooltip();
-    if(!moved){ if(mode==='move') openExpPopup(me,i,kind,idx,b.start,b.end,null); return; }
+    if(!moved){ if(ctrlCopyOnRelease(me, el)) return; if(mode==='move') openExpPopup(me,i,kind,idx,b.start,b.end,null); return; }
     if(ns===b.start && ne===b.end){ refresh(); return; }
     b.start=ns; b.end=ne; if(kind==='actual') b.mode=rangeMode(ns,ne);
     list.sort((x,y)=>x.start<y.start?-1:x.start>y.start?1:0);
