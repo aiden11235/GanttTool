@@ -144,6 +144,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
 .heading-del-btn.hid-toggle:hover{color:inherit!important}
 .heading-row.heading-hidden .heading-name{opacity:.75}
 .heading-row.heading-hidden .hid-toggle{opacity:.8}
+#copied-note{position:fixed;display:none;z-index:9999;pointer-events:none;background:#1e293b;color:#fff;font-family:var(--font);font-size:10px;padding:2px 6px;border-radius:3px;box-shadow:0 1px 3px rgba(0,0,0,.25)}
 .hid-note{font-size:10px;font-style:italic;color:var(--text-faint);white-space:nowrap}
 
 /* Fee entry. Shows $0.00 at rest, a plain number while editing. */
@@ -866,8 +867,8 @@ let pxPerDay = 10;
 let projectStartStr = '';      // YYYY-MM-DD, from the programme (week 1 reference)
 let durationMode = 'days';     // 'days' | 'weeks', display only
 let showNonWorkBands = false;  // view state
-let breakdownPref = 'weekly';  // what the user chose
-let breakdownView = 'weekly';  // what is actually drawn (billing periods when weekly will not fit)
+let breakdownPref = 'billing'; // what the user chose (opens on billing periods)
+let breakdownView = 'billing';  // what is actually drawn (billing periods when weekly will not fit)
 let breakdownForced = false;   // true when weekly was chosen but does not fit
 let weeklyMinZoom = 0;         // smallest px/day at which weekly figures fit
 let programmeSource = '';      // file name of the last Gantt export imported
@@ -2062,9 +2063,9 @@ function collapsedLeftRow(h, fc){
   if(r){
     const invT=r.invTotal, cost=Math.round(r.costToDate+r.costRemaining), profit=invT-cost;
     fee=`<div class="hfee-line"><i class="fee-cap">${isHourly(h)?'Hourly':'Total fee'}</i>
-        <input class="fee-input derived" type="text" readonly tabindex="-1" value="${r.cents?money2(r.cents):''}" placeholder="$0.00" style="color:${h.color}" title="Total fee. Show the heading to change it.">`
+        <input class="fee-input derived" type="text" readonly tabindex="-1"${cv(r.cents)} value="${r.cents?money2(r.cents):''}" placeholder="$0.00" style="color:${h.color}" title="Total fee. Show the heading to change it.">`
       +`</div>`
-      +((invT||cost)?`<div class="hfee-line hfee-profit" title="Projected profit: total invoicing (${money2(invT)}) less total cost (${money2(cost)}: resourcing and expenses)"><i class="fee-cap">Projected profit</i><span class="hprofit${profit<0?' neg':''}">${money2(profit)}</span></div>`:'');
+      +((invT||cost)?`<div class="hfee-line hfee-profit" title="Projected profit: total invoicing (${money2(invT)}) less total cost (${money2(cost)}: resourcing and expenses)${CT}"><i class="fee-cap">Projected profit</i><span class="hprofit${profit<0?' neg':''}"${cv(profit)}>${money2(profit)}</span></div>`:'');
   }
   const row=document.createElement('div');
   row.className='heading-row heading-hidden';
@@ -2181,17 +2182,48 @@ let currentForecast = null;   // last build, shared by left panel, chart, Excel 
 // Two figures stacked in one cell, each with a small caption
 function splitCell(a, b, tipA, tipB, capA='to date', capB='remaining'){
   const neg=v=>v<0?' neg':'';
-  return `<div class="split"><div class="fig fig-a${neg(a)}" title="${escHtml(tipA)}"><i>${capA}</i>${money2(a)}</div>`
-       + `<div class="fig fig-b${neg(b)}" title="${escHtml(tipB)}"><i>${capB}</i>${money2(b)}</div></div>`;
+  return `<div class="split"><div class="fig fig-a${neg(a)}"${cv(a)} title="${escHtml(tipA+CT)}"><i>${capA}</i>${money2(a)}</div>`
+       + `<div class="fig fig-b${neg(b)}"${cv(b)} title="${escHtml(tipB+CT)}"><i>${capB}</i>${money2(b)}</div></div>`;
 }
 // Three figures: a bold total, then to date and remaining (not bold)
 function splitCell3(t, a, b, tipT, tipA, tipB){
   const neg=v=>v<0?' neg':'';
-  return `<div class="split split3"><div class="fig fig-a${neg(t)}" title="${escHtml(tipT)}"><i>total</i>${money2(t)}</div>`
-       + `<div class="fig fig-b${neg(a)}" title="${escHtml(tipA)}"><i>to date</i>${money2(a)}</div>`
-       + `<div class="fig fig-b${neg(b)}" title="${escHtml(tipB)}"><i>remaining</i>${money2(b)}</div></div>`;
+  return `<div class="split split3"><div class="fig fig-a${neg(t)}"${cv(t)} title="${escHtml(tipT+CT)}"><i>total</i>${money2(t)}</div>`
+       + `<div class="fig fig-b${neg(a)}"${cv(a)} title="${escHtml(tipA+CT)}"><i>to date</i>${money2(a)}</div>`
+       + `<div class="fig fig-b${neg(b)}"${cv(b)} title="${escHtml(tipB+CT)}"><i>remaining</i>${money2(b)}</div></div>`;
 }
-function oneFig(v, tip){ return `<div class="one-fig${v<0?' neg':''}" title="${escHtml(tip)}">${money2(v)}</div>`; }
+function oneFig(v, tip){ return `<div class="one-fig${v<0?' neg':''}"${cv(v)} title="${escHtml(tip+CT)}">${money2(v)}</div>`; }
+
+// ── Ctrl+click a figure to copy it as a plain number (12345.67, no $ or
+// commas) for pasting into a spreadsheet. A small "Copied" note confirms it.
+const CT=' (Ctrl+click to copy the number)';
+function cv(cents){ return ` data-v="${Math.round(cents)}"`; }
+function plainNumber(cents){ return String(Math.round(cents)/100); }
+async function copyPlain(text){
+  try{ await navigator.clipboard.writeText(text); return true; }
+  catch(e){
+    const ta=document.createElement('textarea'); ta.value=text; ta.style.position='fixed'; ta.style.opacity='0';
+    document.body.appendChild(ta); ta.select();
+    let ok=false; try{ ok=document.execCommand('copy'); }catch(_){}
+    ta.remove(); return ok;
+  }
+}
+let copiedTimer=null;
+function showCopied(x,y){
+  let n=document.getElementById('copied-note');
+  if(!n){ n=document.createElement('div'); n.id='copied-note'; n.textContent='Copied'; document.body.appendChild(n); }
+  n.style.left=(x+12)+'px'; n.style.top=(y-22)+'px'; n.style.display='block';
+  clearTimeout(copiedTimer); copiedTimer=setTimeout(()=>{ n.style.display='none'; },2000);
+}
+document.addEventListener('mousedown',e=>{
+  if(e.button!==0 || !(e.ctrlKey||e.metaKey)) return;
+  const el=e.target.closest && e.target.closest('[data-v]'); if(!el) return;
+  e.preventDefault(); e.stopPropagation();
+  copyPlain(plainNumber(+el.dataset.v)).then(ok=>{ if(ok) showCopied(e.clientX,e.clientY); });
+},true);
+// Ctrl+click is a right-click on a Mac: no menu over a figure
+document.addEventListener('contextmenu',e=>{ if(e.ctrlKey && e.button===0 && e.target.closest && e.target.closest('[data-v]')) { e.preventDefault(); e.stopPropagation(); } },true);
+document.addEventListener('click',e=>{ if((e.ctrlKey||e.metaKey) && e.target.closest && e.target.closest('[data-v]')){ e.preventDefault(); e.stopPropagation(); } },true);
 
 function renderLeft() {
   const body = document.getElementById('left-body');
@@ -2231,14 +2263,14 @@ function renderLeft() {
       <div class="task-cell">${(()=>{ const ms=h.milestones||[], nM=ms.filter(m=>m.major).length; const nI=ms.filter(m=>invMsOf(h,m.id)).length; return ms.length?`<span class="ms-count" title="Milestones from the programme, shown on the heading bar. Click one on the chart to set an invoicing milestone.">◆ ${ms.length} milestone${ms.length!==1?'s':''}${nM?` · ${nM} major`:''}${nI?` · ${nI} invoicing`:''}</span>`:''; })()}</div>
       <div class="task-cell fee-cell hfee"><div class="hfee-line">${isHourly(h)
         ? `<i class="fee-cap" title="Hourly rates heading">Hourly</i>
-        <input class="fee-input derived" type="text" readonly tabindex="-1" data-idx="${i}" value="${money2(C)}" style="color:${h.color}"
+        <input class="fee-input derived" type="text" readonly tabindex="-1" data-idx="${i}"${cv(C)} value="${money2(C)}" style="color:${h.color}"
           title="Hourly rates: the total of all invoices, actual plus forecast. The forecast is the billable resourcing (hours x utilisation x rate). Right-click the heading to change to fixed-fee and enter a fee.">`
         : `<i class="fee-cap">Total fee</i>
         <input class="fee-input${unalloc?' unallocated':''}" type="text" inputmode="decimal" autocomplete="off" spellcheck="false"
-          data-idx="${i}" value="${C?money2(C):''}" placeholder="$0.00" style="color:${h.color}"
+          data-idx="${i}"${cv(C)} value="${C?money2(C):''}" placeholder="$0.00" style="color:${h.color}"
           title="${unalloc?'This heading has no working days in the programme, so its fee cannot be spread.':'Total fee for this stage (fixed-fee). Accepts 12345.50, $12,345.50, 120k or 1.2m. Enter to apply, Escape to cancel.'}"
           onfocus="feeFocus(this)" onblur="feeBlur(event,this)" onkeydown="feeKey(event,this)">`}</div>
-        ${showProfit?`<div class="hfee-line hfee-profit" title="Projected profit: total invoicing (${money2(invT)}) less total cost (${money2(resT)}: resourcing and expenses)"><i class="fee-cap">Projected profit</i><span class="hprofit${profit<0?' neg':''}">${money2(profit)}</span></div>`:''}
+        ${showProfit?`<div class="hfee-line hfee-profit" title="Projected profit: total invoicing (${money2(invT)}) less total cost (${money2(resT)}: resourcing and expenses)${CT}"><i class="fee-cap">Projected profit</i><span class="hprofit${profit<0?' neg':''}"${cv(profit)}>${money2(profit)}</span></div>`:''}
       </div>
       <div class="task-cell comments-cell"><div class="comments-text" title="${escHtml(h.comments)}">${escHtml(h.comments)}</div></div>
     `;
@@ -2335,7 +2367,7 @@ function renderLeftTotals(fc){
       <div class="lt-cell"></div>`;
   };
   strip('left-totals-b',
-    `<span class="lt-label">Total projected profit</span><span class="lt-profit${profit<0?' neg':''}" title="Total invoicing (${money2(invTotal)}) less total cost (${money2(resTotal)}: resourcing and expenses), all headings">${money2(profit)}</span>`
+    `<span class="lt-label">Total projected profit</span><span class="lt-profit${profit<0?' neg':''}"${cv(profit)} title="Total invoicing (${money2(invTotal)}) less total cost (${money2(resTotal)}: resourcing and expenses), all headings${CT}">${money2(profit)}</span>`
       +(fc.unallocated?`<span class="lt-warn" style="margin-left:8px" title="Fees on headings with no working days are not in the chart">⚠ ${money2(fc.unallocated)} not spread</span>`:''),
     'Budget', splitCell3(fc.budgetToDate+fc.budgetRemaining,fc.budgetToDate,fc.budgetRemaining,'Total budget, all headings','Budget to date, all headings','Budget remaining, all headings'));
   const bad=fc.imbalanced.length;
