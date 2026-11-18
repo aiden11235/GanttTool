@@ -383,7 +383,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
 #ovr-popup .op-head span:nth-child(2){width:58px;text-align:right}
 #ovr-popup .op-head span:nth-child(3){flex:1;text-align:right;padding-right:24px}
 #ovr-popup:not(.has-pct) .op-head{display:none}
-#exp-popup{position:fixed;z-index:900;background:#fff;border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,.22);padding:12px;width:380px;display:none;font-family:var(--font)}
+#exp-popup{position:fixed;z-index:900;background:#fff;border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,.22);padding:12px;width:440px;display:none;font-family:var(--font)}
 #exp-popup.visible{display:block}
 #exp-popup .op-title{font-size:12px;font-weight:700;color:var(--text);margin-bottom:2px}
 #exp-popup .op-sub{font-size:11px;color:var(--text-muted);margin-bottom:8px}
@@ -402,7 +402,11 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
 #exp-popup .xp-name{flex:1}
 #exp-popup .xp-amt{width:96px;flex:none;text-align:right;font-family:var(--font-mono)!important}
 #exp-popup .xp-rec{width:66px;flex:none;display:flex;justify-content:center}
-#exp-popup .xp-rec input{width:15px;height:15px;cursor:pointer}
+#exp-popup .xp-rec input,#exp-popup .xp-wo input{width:15px;height:15px;cursor:pointer}
+#exp-popup .xp-h-wo{width:56px;text-align:center}
+#exp-popup .xp-wo{width:56px;flex:none;display:flex;justify-content:center}
+.exp-bar.exp-wo{opacity:.4}
+.exp-act-box.exp-wo{border-style:dashed!important;opacity:.7}
 #exp-popup .op-del{border:none;background:none;color:var(--text-faint);cursor:pointer;font-size:13px;width:18px;flex:none;padding:0}
 #exp-popup .op-del:hover{color:var(--bar-crit)}
 #exp-popup .op-hint{font-size:11px;color:var(--text-muted);line-height:1.45;margin:8px 0 10px;min-height:32px}
@@ -667,7 +671,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
     <label>From<input id="xp-start" type="text" placeholder="dd/mm/yyyy" autocomplete="off" spellcheck="false"></label>
     <label>to<input id="xp-end" type="text" placeholder="dd/mm/yyyy" autocomplete="off" spellcheck="false"></label>
   </div>
-  <div class="xp-head"><span>Item</span><span class="xp-h-amt">Amount</span><span class="xp-h-rec" title="Recoverable: invoiced on to the client as it is (and still a cost). Unticked: a non-recoverable cost.">Recoverable</span><span class="xp-h-del"></span></div>
+  <div class="xp-head"><span>Item</span><span class="xp-h-amt">Amount</span><span class="xp-h-rec" title="Recoverable: invoiced on to the client as it is (and still a cost). Unticked: a non-recoverable cost.">Recoverable</span><span class="xp-h-wo" title="Write-off: tracked as an entry only. Not a cost, not invoiced and not in any figure. For example a subconsultant invoice passed straight on to the client.">Write-off</span><span class="xp-h-del"></span></div>
   <div id="xp-rows"></div>
   <div class="op-hint" id="xp-hint"></div>
   <div style="display:flex;gap:8px;justify-content:flex-end">
@@ -1194,12 +1198,16 @@ function copyResources(list){
 
 // Expenses: forecast bars (plan) and actual boxes (actual), each holding
 // several entries. Recoverable entries are invoiced on to the client as they
-// are (and are a cost); non-recoverable entries are a cost only. An actual
-// replaces the forecast for the days it covers, as with resourcing.
-//   expenses: {plan:[{start,end,items:[{name,cents,rec?}]}], actual:[{start,end,mode,items:[...]}]}
+// are (and are a cost); non-recoverable entries are a cost only. A forecast
+// bar is a lump sum: actuals on its dates count against it and what is left
+// spreads over its days not covered by an actual. A $0 actual marks a period
+// with no charge, so the rest of the lump sum moves to the remaining days.
+//   expenses: {plan:[{start,end,items:[{name,cents,rec?,wo?}]}], actual:[{start,end,mode,items:[...]}]}
+// A write-off item (wo) is tracked as an entry only: not a cost, not
+// invoiced, in no figure (e.g. a subconsultant invoice passed straight on).
 function sanitiseExpItems(list){
-  return (Array.isArray(list)?list:[]).filter(x=>x&&isFinite(+x.cents)&&Math.round(+x.cents)!==0)
-    .map(x=>({name:String(x.name==null?'':x.name).replace(/\s+/g,' ').trim().slice(0,60), cents:Math.round(+x.cents), ...(x.rec?{rec:true}:{})}));
+  return (Array.isArray(list)?list:[]).filter(x=>x&&x.cents!==''&&x.cents!=null&&isFinite(+x.cents))
+    .map(x=>({name:String(x.name==null?'':x.name).replace(/\s+/g,' ').trim().slice(0,60), cents:Math.round(+x.cents), ...(x.wo?{wo:true}:x.rec?{rec:true}:{})}));
 }
 function sanitiseExpenses(e){
   e=(e&&typeof e==='object')?e:{};
@@ -1210,7 +1218,7 @@ function sanitiseExpenses(e){
   return {plan:ranges(e.plan,false), actual:ranges(e.actual,true)};
 }
 function copyExpenses(e){
-  const items=l=>l.map(x=>({name:x.name, cents:x.cents, ...(x.rec?{rec:true}:{})}));
+  const items=l=>l.map(x=>({name:x.name, cents:x.cents, ...(x.wo?{wo:true}:x.rec?{rec:true}:{})}));
   e=e||{plan:[],actual:[]};
   return {plan:(e.plan||[]).map(b=>({start:b.start,end:b.end,items:items(b.items)})),
           actual:(e.actual||[]).map(b=>({start:b.start,end:b.end,mode:b.mode,items:items(b.items)}))};
@@ -1256,29 +1264,50 @@ function invMsCurve(days, C, points){
   return {T, nonMono};
 }
 function hasExpenses(h){ const e=h.expenses; return !!(e&&((e.plan||[]).length||(e.actual||[]).length)); }
-function expSum(items){ let cost=0, rec=0; (items||[]).forEach(x=>{ cost+=x.cents; if(x.rec) rec+=x.cents; }); return {cost, rec, non:cost-rec}; }
+function expSum(items){ let cost=0, rec=0, wo=0; (items||[]).forEach(x=>{ if(x.wo){ wo+=x.cents; return; } cost+=x.cents; if(x.rec) rec+=x.cents; }); return {cost, rec, non:cost-rec, wo}; }
+// Only write-off items: shown faded, as a record
+function expOnlyWO(items){ const s=expSum(items); return !!s.wo && !s.cost; }
 // Each forecast bar and actual box is spread evenly over its working days
 // (or its last day if it has none). Days inside an actual box drop the forecast.
 function expenseCalc(h, mode, today){
-  const e=h.expenses||{plan:[],actual:[]}, covered=new Set();
+  const e=h.expenses||{plan:[],actual:[]}, plan=e.plan||[], covered=new Set();
   (e.actual||[]).forEach(a=>eachDay(a.start,a.end,d=>covered.add(d)));
   const periods=new Map();
   const at=k=>{ let p=periods.get(k); if(!p){ p={cost:0,rec:0,actCost:0,actRec:0}; periods.set(k,p); } return p; };
   let costToDate=0, costRem=0, recToDate=0, recRem=0;
-  const lay=(b, act)=>{
-    const s=expSum(b.items), days=allWorkdays(b.start,b.end);
-    const dd=days.length?days:[b.end];
-    const cs=spreadCents(s.cost,dd), rs=spreadCents(s.rec,dd);
-    dd.forEach(d=>{
-      if(!act && covered.has(d)) return;
-      const c=cs.get(d)||0, r=rs.get(d)||0, p=at(periodKey(d,mode));
-      p.cost+=c; p.rec+=r; if(act){ p.actCost+=c; p.actRec+=r; }
-      if(d<today){ costToDate+=c; recToDate+=r; } else { costRem+=c; recRem+=r; }
-    });
+  const put=(d,c,r,act)=>{
+    const p=at(periodKey(d,mode));
+    p.cost+=c; p.rec+=r; if(act){ p.actCost+=c; p.actRec+=r; }
+    if(d<today){ costToDate+=c; recToDate+=r; } else { costRem+=c; recRem+=r; }
   };
-  (e.plan||[]).forEach(b=>lay(b,false));
-  (e.actual||[]).forEach(a=>lay(a,true));
-  return {periods, covered, costToDate, costRem, recToDate, recRem, cost:costToDate+costRem, rec:recToDate+recRem};
+  const barAt=d=>plan.findIndex(b=>b.start<=d&&b.end>=d);
+  // Actuals: spread over their working days; each day's amount counts
+  // against the forecast bar that covers that day
+  const used=plan.map(()=>({cost:0,rec:0}));
+  (e.actual||[]).forEach(a=>{
+    const s=expSum(a.items), days=allWorkdays(a.start,a.end), dd=days.length?days:[a.end];
+    const cs=spreadCents(s.cost,dd), rs=spreadCents(s.rec,dd);
+    // a box with no working days still covers the bar it sits in
+    eachDay(a.start,a.end,d=>{ const bi=barAt(d); if(bi>=0) used[bi].hit=true; });
+    dd.forEach(d=>{
+      const c=cs.get(d)||0, r=rs.get(d)||0;
+      put(d,c,r,true);
+      const bi=barAt(d); if(bi>=0){ used[bi].cost+=c; used[bi].rec+=r; }
+    });
+  });
+  // Forecast bars: what is left of the lump sum, over the days not covered
+  const left=plan.map((b,bi)=>{
+    const s=expSum(b.items), u=used[bi];
+    const recLeft=Math.max(0,s.rec-u.rec), nonLeft=Math.max(0,(s.cost-s.rec)-(u.cost-u.rec)), costLeft=recLeft+nonLeft;
+    const days=allWorkdays(b.start,b.end), free=days.filter(d=>!covered.has(d));
+    const dd=free.length?free:(!days.length&&!covered.has(b.end)?[b.end]:[]);
+    if(dd.length){
+      const cs=spreadCents(costLeft,dd), rs=spreadCents(recLeft,dd);
+      dd.forEach(d=>put(d,cs.get(d)||0,rs.get(d)||0,false));
+    }
+    return {used:u.cost, left:costLeft, days:dd.length, total:s.cost, drawn:!!(u.hit||u.cost), lost:dd.length?0:costLeft};
+  });
+  return {periods, covered, left, costToDate, costRem, recToDate, recRem, cost:costToDate+costRem, rec:recToDate+recRem};
 }
 
 // Budget periods captured from resourcing (fixed-fee headings):
@@ -4500,11 +4529,15 @@ function costTip(r,key,mode){
 function expList(h,kind){ h.expenses=h.expenses||{plan:[],actual:[]}; h.expenses.plan=h.expenses.plan||[]; h.expenses.actual=h.expenses.actual||[]; return h.expenses[kind]; }
 function expText(items, short){
   const s=expSum(items);
+  if(!s.cost && s.wo) return short ? money0(s.wo) : `w/o ${money0(s.wo)}`;
   if(short) return money0(s.cost);
-  return s.rec ? `${money0(s.cost)} / ${money0(s.rec)}` : money0(s.cost);
+  const t = s.rec ? `${money0(s.cost)} / ${money0(s.rec)}` : money0(s.cost);
+  return s.wo ? `${t} · w/o ${money0(s.wo)}` : t;
 }
+// Copy value of a bar or box: its cost, or the write-off total when that is all it holds
+function expCopyCents(items){ const s=expSum(items); return s.cost || s.wo; }
 function expItemsHtml(items){
-  return items.map(x=>`<div class="tt-row"><span>${escHtml(x.name||'Expense')}${x.rec?' <span style="opacity:.6">(recoverable)</span>':''}</span><span>${money2(x.cents)}</span></div>`).join('');
+  return items.map(x=>`<div class="tt-row"><span>${escHtml(x.name||'Expense')}${x.wo?' <span style="opacity:.6">(write-off)</span>':x.rec?' <span style="opacity:.6">(recoverable)</span>':''}</span><span>${money2(x.cents)}</span></div>`).join('');
 }
 function expTip(h, ex, b, kind){
   const s=expSum(b.items), wd=workdaysInRange(parseDate(b.start),parseDate(b.end));
@@ -4513,11 +4546,18 @@ function expTip(h, ex, b, kind){
     +`<div style="margin-top:4px;border-top:1px solid #334155;padding-top:4px">${expItemsHtml(b.items)}`
     +`<div class="tt-row" style="font-weight:700;margin-top:2px"><span>Cost</span><span>${money2(s.cost)}</span></div>`
     +`<div class="tt-row"><span>Recoverable (invoiced)</span><span>${money2(s.rec)}</span></div>`
-    +`<div class="tt-row"><span>Non-recoverable</span><span>${money2(s.non)}</span></div></div>`
+    +`<div class="tt-row"><span>Non-recoverable</span><span>${money2(s.non)}</span></div>`
+    +(s.wo?`<div class="tt-row" style="opacity:.75"><span>Write-off (not counted)</span><span>${money2(s.wo)}</span></div>`:'')+`</div>`
     +`<span style="opacity:.75">Spread evenly over its working days</span>`;
   if(kind==='plan'){
-    let cov=0; eachDay(b.start,b.end,d=>{ if(ex.covered.has(d)&&isWorkday(d)) cov++; });
-    if(cov) html+=`<br><span style="opacity:.75">${cov} working day${cov!==1?'s are':' is'} covered by actual expenses, which replace the forecast there</span>`;
+    const bi=expList(h,'plan').indexOf(b), L=ex.left&&ex.left[bi];
+    if(L && L.drawn){
+      html+=`<div style="margin-top:4px;border-top:1px solid #334155;padding-top:4px">`
+        +`<div class="tt-row"><span>Actuals on these dates</span><span>${money2(L.used)}</span></div>`
+        +`<div class="tt-row" style="font-weight:700"><span>Left to forecast</span><span>${money2(L.left)}</span></div></div>`
+        +(L.days?`<span style="opacity:.75">Spread over the ${L.days} working day${L.days!==1?'s':''} not covered by an actual</span>`
+                :`<span style="color:#fca5a5">Every day is covered by an actual, so ${money2(L.lost)} is not forecast</span>`);
+    }
   }
   return html+`<br><span style="opacity:.6;font-style:italic">Click to change, drag to move, drag the ends to stretch (snaps to weeks; Shift for days, Ctrl for periods), right-click for options</span>`;
 }
@@ -4533,7 +4573,7 @@ function drawExpenseRow(r, i, spec, mode){
     const bar=document.createElement('div');
     bar.className='gantt-bar res-bar exp-bar';
     bar.style.left=x0+'px'; bar.style.width=w+'px'; bar.style.top=INV_BAR_TOP+'px';
-    bar.style.background=h.color; bar.dataset.bi=bi; bar.dataset.v=expSum(b.items).cost; bar.dataset.drag=1;
+    bar.style.background=h.color; bar.dataset.bi=bi; bar.dataset.v=expCopyCents(b.items); bar.dataset.drag=1; if(expOnlyWO(b.items)) bar.classList.add('exp-wo');
     let run=null; const covers=[];
     eachDay(b.start,b.end,d=>{ if(ex.covered.has(d)){ if(run) run.end=d; else run={start:d,end:d}; } else if(run){ covers.push(run); run=null; } });
     if(run) covers.push(run);
@@ -4560,7 +4600,7 @@ function drawExpenseRow(r, i, spec, mode){
     const w=Math.max(6,x1-x0-2);
     const box=document.createElement('div');
     box.className='fee-label pill ovr inv-box exp-act-box';
-    box.dataset.ai=ai; box.dataset.v=expSum(a.items).cost; box.dataset.drag=1;
+    box.dataset.ai=ai; box.dataset.v=expCopyCents(a.items); box.dataset.drag=1; if(expOnlyWO(a.items)) box.classList.add('exp-wo');
     box.style.left=(x0+1)+'px'; box.style.width=w+'px';
     box.style.top=(INV_LANE_TOP+lane[ai]*(ACT_LANE_H+ACT_LANE_GAP))+'px';
     box.style.border=`1px solid ${h.color}`; box.style.color=h.color;
@@ -4666,7 +4706,8 @@ function expRowHtml(x){
   return `<div class="op-row xp-row">
     <input class="xp-name" type="text" maxlength="60" autocomplete="off" spellcheck="false" placeholder="${x?'Item':'Add an item'}" value="${escHtml(x?x.name:'')}">
     <input class="xp-amt" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" placeholder="$0.00" value="${x?(x.cents/100).toFixed(2):''}">
-    <span class="xp-rec"><input type="checkbox" ${x&&x.rec?'checked':''} title="Recoverable: invoiced on to the client as it is"></span>
+    <span class="xp-rec"><input type="checkbox" ${x&&x.rec&&!x.wo?'checked':''} title="Recoverable: invoiced on to the client as it is"></span>
+    <span class="xp-wo"><input type="checkbox" ${x&&x.wo?'checked':''} title="Write-off: tracked here only, not counted in any figure"></span>
     <button class="op-del" type="button" title="Remove this item" onclick="this.closest('.op-row').remove();expAddBlank();updateExpHint()">✕</button>
   </div>`;
 }
@@ -4678,6 +4719,9 @@ function expAddBlank(){
   }
 }
 function wireExpRow(row){
+  const rec=row.querySelector('.xp-rec input'), wo=row.querySelector('.xp-wo input');
+  rec.addEventListener('change',()=>{ if(rec.checked) wo.checked=false; });
+  wo.addEventListener('change',()=>{ if(wo.checked) rec.checked=false; });
   row.querySelectorAll('input').forEach(inp=>{
     inp.addEventListener('input',()=>{ expAddBlank(); updateExpHint(); });
     inp.addEventListener('change',updateExpHint);
@@ -4721,8 +4765,9 @@ function readExpPopup(){
     const v=raw===''?null:parseMoney(raw);
     amt.classList.toggle('invalid', raw!=='' && v===null);
     if(raw!=='' && v===null){ bad=bad||'Amount not recognised. Try 1250, $1,250.00 or 1.2k.'; return; }
-    if(!v) return;
-    items.push({name:nm.slice(0,60), cents:Math.round(v*100), ...(row.querySelector('.xp-rec input').checked?{rec:true}:{})});
+    if(v===null) return;   // blank row; $0 is kept (a period with no charge)
+    const wo=row.querySelector('.xp-wo input').checked;
+    items.push({name:nm.slice(0,60), cents:Math.round(v*100), ...(wo?{wo:true}:row.querySelector('.xp-rec input').checked?{rec:true}:{})});
   });
   if(!bad && s && e && expCfg.kind==='plan') bad=expOverlap(expList(headings[expCfg.i],'plan'),s,e,expCfg.idx==null?-1:expCfg.idx);
   return {s,e,items,bad};
@@ -4734,9 +4779,9 @@ function updateExpHint(){
   const t=expSum(x.items), wd=workdaysInRange(parseDate(x.s),parseDate(x.e));
   hint.className='op-hint';
   hint.textContent = x.items.length
-    ? `Cost ${money2(t.cost)}: ${money2(t.rec)} recoverable (added to invoicing), ${money2(t.non)} non-recoverable. ${weeksText(x.s,x.e)}, ${wd} working day${wd!==1?'s':''}.`
-      +(expCfg.kind==='actual'?' Replaces any forecast expenses on these dates.':'')
-    : (expCfg.idx!=null?'No items: Apply removes this '+(expCfg.kind==='plan'?'bar.':'entry.'):'Add an item and amount. Tick Recoverable if it is invoiced on to the client.');
+    ? `Cost ${money2(t.cost)}: ${money2(t.rec)} recoverable (added to invoicing), ${money2(t.non)} non-recoverable.${t.wo?` Write-off ${money2(t.wo)} (tracked only, not counted).`:''} ${weeksText(x.s,x.e)}, ${wd} working day${wd!==1?'s':''}.`
+      +(expCfg.kind==='actual'?' Counts against the forecast bar on these dates; the rest of the bar moves to the days left.':'')
+    : (expCfg.idx!=null?'No items: Apply removes this '+(expCfg.kind==='plan'?'bar.':'entry.'):'Add an item and amount. Tick Recoverable if it is invoiced on to the client, or Write-off to track it without counting it.'+(expCfg.kind==='actual'?' Enter $0 for a period with no charge.':''));
 }
 function commitExp(){
   if(!expCfg) return;
@@ -4787,7 +4832,7 @@ function openExpRowMenu(e, i, row){
   const plan=expList(h,'plan'), act=expList(h,'actual'), items=[];
   if(!plan.some(x=>x.start<=b.end&&x.end>=b.start)) items.push(`<div class="ctx-item" onclick="expCtxAdd('plan')">＋ Add forecast expenses for this ${unitName(mode)}…</div>`);
   items.push(`<div class="ctx-item" onclick="expCtxAdd('actual')">✎ ${act.some(a=>a.start===b.start&&a.end===b.end)?'Change':'Enter'} actual expenses for this ${unitName(mode)}…</div>`);
-  items.push(`<div class="ctx-item info">Bars on top: forecast expenses. Boxes beneath: actual expenses, which replace the forecast for their dates. Recoverable items are also invoiced.</div>`);
+  items.push(`<div class="ctx-item info">Bars on top: forecast expenses. Boxes beneath: actual expenses, which count against the forecast bar on their dates; the rest of the bar spreads over the days left. Enter a $0 actual for a period with no charge. Recoverable items are also invoiced.</div>`);
   if(plan.length||act.length) items.push('<div class="ctx-sep"></div>',`<div class="ctx-item danger" onclick="expCtxClearAll()">✕ Remove all expenses for this heading</div>`);
   showMenu(e,items);
 }
@@ -6092,7 +6137,7 @@ function buildWorkbook(){
     sh.set(R,4,''); sh.set(R,C0,'Dates',{b:true,fill:HEAD,border:'bottom'}); R++;
     [['plan','Forecast'],['actual','Actual']].forEach(([kind,label])=>(h.expenses[kind]||[]).forEach(b=>b.items.forEach(x=>{
       sh.set(R,0,x.name||'Expense',{border:'bottom'}); sh.set(R,1,x.cents/100,{fmt:$2,border:'bottom'});
-      sh.set(R,2,x.rec?'Recoverable':'Non-recoverable',{color:x.rec?INK:MUTED,border:'bottom'}); sh.set(R,3,label,{color:MUTED,border:'bottom'});
+      sh.set(R,2,x.wo?'Write-off (not counted)':x.rec?'Recoverable':'Non-recoverable',{color:x.rec&&!x.wo?INK:MUTED,border:'bottom'}); sh.set(R,3,label,{color:MUTED,border:'bottom'});
       sh.set(R,C0,`${fmtDisplay(b.start)} to ${fmtDisplay(b.end)}`,{color:MUTED}); R++;
     })));
     R++;
